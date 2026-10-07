@@ -34,7 +34,6 @@ pub async fn serve(cfg: &crate::config::Config) -> Result<()> {
         .route("/api/projects", get(api_projects))
         .route("/api/sources", get(api_sources))
         .route("/api/tasks", get(api_tasks))
-        .route("/api/agents", get(api_agents))
         .route("/", get(index))
         .route("/{*path}", get(asset));
     let addr = format!("127.0.0.1:{}", cfg.server.port);
@@ -79,13 +78,6 @@ async fn api_tasks(
         }
     }
     db::list_tasks(&conn, project_id, q.status.as_deref(), q.limit.unwrap_or(20))
-        .map(Json)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
-}
-
-async fn api_agents() -> Result<Json<Vec<models::Agent>>, StatusCode> {
-    let conn = db::connect().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    db::list_agents(&conn)
         .map(Json)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }

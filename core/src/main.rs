@@ -33,11 +33,6 @@ enum Cmd {
         #[command(subcommand)]
         cmd: SourceCmd,
     },
-    /// Manage registered agents.
-    Agent {
-        #[command(subcommand)]
-        cmd: AgentCmd,
-    },
     /// Manage tasks.
     Task {
         #[command(subcommand)]
@@ -82,31 +77,6 @@ enum SourceCmd {
     },
     Disable {
         id: i64,
-    },
-}
-
-#[derive(Subcommand)]
-enum AgentCmd {
-    Create {
-        name: String,
-        #[arg(long, default_value = "")]
-        description: String,
-        #[arg(long, default_value = "")]
-        system_prompt: String,
-        #[arg(long, default_value = "")]
-        model: String,
-    },
-    List,
-    Update {
-        name: String,
-        #[arg(long)]
-        description: Option<String>,
-        #[arg(long)]
-        system_prompt: Option<String>,
-        #[arg(long)]
-        model: Option<String>,
-        #[arg(long)]
-        enabled: Option<bool>,
     },
 }
 
@@ -291,60 +261,6 @@ async fn main() -> Result<()> {
                     println!("disabled source #{id}");
                 } else {
                     anyhow::bail!("no source #{id}");
-                }
-            }
-        },
-        Cmd::Agent { cmd } => match cmd {
-            AgentCmd::Create {
-                name,
-                description,
-                system_prompt,
-                model,
-            } => {
-                if !projects::valid_name(&name) {
-                    anyhow::bail!("invalid name '{name}' — use letters, digits, '-', '_' or '.'");
-                }
-                let conn = open_db()?;
-                if db::get_agent_by_name(&conn, &name)?.is_some() {
-                    anyhow::bail!("agent '{name}' already exists");
-                }
-                let id = db::insert_agent(
-                    &conn,
-                    &models::NewAgent {
-                        name: &name,
-                        description: &description,
-                        system_prompt: &system_prompt,
-                        model: &model,
-                    },
-                )?;
-                println!("created agent '{name}' (#{id})");
-            }
-            AgentCmd::List => {
-                let conn = open_db()?;
-                for a in db::list_agents(&conn)? {
-                    let state = if a.enabled { "on" } else { "off" };
-                    println!("{:<16} {:<4} {:<16} {}", a.name, state, a.model, a.description);
-                }
-            }
-            AgentCmd::Update {
-                name,
-                description,
-                system_prompt,
-                model,
-                enabled,
-            } => {
-                let conn = open_db()?;
-                if db::update_agent(
-                    &conn,
-                    &name,
-                    description.as_deref(),
-                    system_prompt.as_deref(),
-                    model.as_deref(),
-                    enabled,
-                )? {
-                    println!("updated agent '{name}'");
-                } else {
-                    anyhow::bail!("no agent named '{name}'");
                 }
             }
         },

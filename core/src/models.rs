@@ -111,21 +111,3 @@ pub mod status {
         ALL.contains(&s)
     }
 }
-
-#[derive(Debug, Serialize)]
-#[allow(dead_code)]
-pub struct Agent {
-    pub id: i64,
-    pub name: String,
-    pub description: String,
-    pub model: String,
-    pub enabled: bool,
-}
-
-#[derive(Debug)]
-pub struct NewAgent<'a> {
-    pub name: &'a str,
-    pub description: &'a str,
-    pub system_prompt: &'a str,
-    pub model: &'a str,
-}

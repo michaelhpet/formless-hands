@@ -1,4 +1,4 @@
-use crate::models::{Agent, NewAgent, NewProject, NewTask, NewTaskSource, Project, Task, TaskSource};
+use crate::models::{NewProject, NewTask, NewTaskSource, Project, Task, TaskSource};
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 use std::fs;
@@ -40,7 +40,6 @@ CREATE TABLE IF NOT EXISTS tasks (
   status        TEXT NOT NULL DEFAULT 'open',
   priority      INTEGER NOT NULL DEFAULT 0,
   locked        INTEGER NOT NULL DEFAULT 0,
-  assigned_agent TEXT NOT NULL DEFAULT '',
   pr_number     INTEGER,
   branch        TEXT NOT NULL DEFAULT '',
   attempts      INTEGER NOT NULL DEFAULT 0,
@@ -49,33 +48,19 @@ CREATE TABLE IF NOT EXISTS tasks (
   updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(task_source_id, external_id)
 );
-CREATE TABLE IF NOT EXISTS agents (
-  id          INTEGER PRIMARY KEY,
-  name        TEXT NOT NULL UNIQUE,
-  description TEXT NOT NULL DEFAULT '',
-  system_prompt TEXT NOT NULL DEFAULT '',
-  tools_json  TEXT NOT NULL DEFAULT '[]',
-  skills_json TEXT NOT NULL DEFAULT '[]',
-  model       TEXT NOT NULL DEFAULT '',
-  concurrency_limit INTEGER NOT NULL DEFAULT 1,
-  enabled     INTEGER NOT NULL DEFAULT 1
-);
 CREATE TABLE IF NOT EXISTS runs (
   id          INTEGER PRIMARY KEY,
   task_id     INTEGER NOT NULL REFERENCES tasks(id),
-  agent_id    INTEGER REFERENCES agents(id),
   worktree_path TEXT NOT NULL DEFAULT '',
   branch      TEXT NOT NULL DEFAULT '',
   started_at  TEXT NOT NULL DEFAULT (datetime('now')),
   finished_at TEXT,
   exit_code   INTEGER,
-  log_path    TEXT NOT NULL DEFAULT '',
-  pr_url      TEXT NOT NULL DEFAULT ''
+  log_path    TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS review_comments (
   id        INTEGER PRIMARY KEY,
   task_id   INTEGER NOT NULL REFERENCES tasks(id),
-  pr_number INTEGER NOT NULL DEFAULT 0,
   author    TEXT NOT NULL DEFAULT '',
   body      TEXT NOT NULL DEFAULT '',
   path      TEXT NOT NULL DEFAULT '',
@@ -97,12 +82,6 @@ pub fn connect() -> Result<Connection> {
 
 pub fn migrate(conn: &Connection) -> Result<()> {
     conn.execute_batch(SCHEMA)?;
-    conn.execute(
-        "INSERT OR IGNORE INTO agents (name, description, system_prompt) VALUES
-         ('triage', 'Prioritizes open tasks; read-only, never edits code.', ''),
-         ('worker', 'Implements one triaged task via opencode CLI in a git worktree.', '')",
-        [],
-    )?;
     Ok(())
 }
 
@@ -309,83 +288,4 @@ pub fn set_source_enabled(conn: &Connection, id: i64, enabled: bool) -> Result<b
 
 pub fn remove_source(conn: &Connection, id: i64) -> Result<bool> {
     Ok(conn.execute("DELETE FROM task_sources WHERE id = ?1", [id])? > 0)
-}
-
-pub fn list_agents(conn: &Connection) -> Result<Vec<Agent>> {
-    let mut st =
-        conn.prepare("SELECT id, name, description, model, enabled FROM agents ORDER BY name")?;
-    let rows = st.query_map([], |r| {
-        Ok(Agent {
-            id: r.get(0)?,
-            name: r.get(1)?,
-            description: r.get(2)?,
-            model: r.get(3)?,
-            enabled: r.get::<_, i64>(4)? != 0,
-        })
-    })?;
-    Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
-}
-
-pub fn get_agent_by_name(conn: &Connection, name: &str) -> Result<Option<Agent>> {
-    let mut st = conn.prepare(
-        "SELECT id, name, description, model, enabled FROM agents WHERE name = ?1",
-    )?;
-    let mut rows = st.query_map([name], |r| {
-        Ok(Agent {
-            id: r.get(0)?,
-            name: r.get(1)?,
-            description: r.get(2)?,
-            model: r.get(3)?,
-            enabled: r.get::<_, i64>(4)? != 0,
-        })
-    })?;
-    Ok(rows.next().transpose()?)
-}
-
-pub fn insert_agent(conn: &Connection, agent: &NewAgent) -> Result<i64> {
-    conn.execute(
-        "INSERT INTO agents (name, description, system_prompt, model) VALUES (?1, ?2, ?3, ?4)",
-        [
-            agent.name,
-            agent.description,
-            agent.system_prompt,
-            agent.model,
-        ],
-    )?;
-    Ok(conn.last_insert_rowid())
-}
-
-pub fn update_agent(
-    conn: &Connection,
-    name: &str,
-    description: Option<&str>,
-    system_prompt: Option<&str>,
-    model: Option<&str>,
-    enabled: Option<bool>,
-) -> Result<bool> {
-    let mut sets: Vec<String> = Vec::new();
-    let mut vals: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-    if let Some(v) = description {
-        sets.push("description = ?".to_string());
-        vals.push(Box::new(v.to_string()));
-    }
-    if let Some(v) = system_prompt {
-        sets.push("system_prompt = ?".to_string());
-        vals.push(Box::new(v.to_string()));
-    }
-    if let Some(v) = model {
-        sets.push("model = ?".to_string());
-        vals.push(Box::new(v.to_string()));
-    }
-    if let Some(v) = enabled {
-        sets.push("enabled = ?".to_string());
-        vals.push(Box::new(if v { 1i64 } else { 0i64 }));
-    }
-    if sets.is_empty() {
-        anyhow::bail!("nothing to update — pass --description, --system-prompt, --model, or --enabled");
-    }
-    let sql = format!("UPDATE agents SET {} WHERE name = ?{}", sets.join(", "), vals.len() + 1);
-    vals.push(Box::new(name.to_string()));
-    let refs: Vec<&dyn rusqlite::ToSql> = vals.iter().map(|v| v.as_ref()).collect();
-    Ok(conn.execute(&sql, refs.as_slice())? > 0)
 }
