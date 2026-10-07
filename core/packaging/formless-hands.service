@@ -1,0 +1,13 @@
+[Unit]
+Description=formless-hands — autonomous coding-agent orchestrator
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/formless-hands run
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

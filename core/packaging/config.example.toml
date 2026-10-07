@@ -1,0 +1,7 @@
+[service]
+poll_cron = "0 * * * *"
+watch_cron = "*/2 * * * *"
+max_concurrent_workers = 1
+
+[server]
+port = 7770

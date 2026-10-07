@@ -1,0 +1,23 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.5.15/biome.json",
+	"files": {
+		"includes": ["**", "!**/gui/dist", "!**/node_modules", "!**/target"]
+	},
+	"formatter": {
+		"enabled": true
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"preset": "recommended",
+			"correctness": {
+				"useHookAtTopLevel": "error"
+			}
+		}
+	},
+	"javascript": {
+		"formatter": {
+			"quoteStyle": "double"
+		}
+	}
+}
