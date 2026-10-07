@@ -1,7 +1,8 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { App } from "./App.tsx";
+import { ThemeProvider } from "./components/theme-provider.tsx";
 import "./index.css";
-import App from "./App.tsx";
 
 const root = document.getElementById("root");
 if (!root) {
@@ -9,6 +10,8 @@ if (!root) {
 }
 createRoot(root).render(
 	<StrictMode>
-		<App />
+		<ThemeProvider defaultTheme="system" storageKey="formless-hands-theme">
+			<App />
+		</ThemeProvider>
 	</StrictMode>,
 );

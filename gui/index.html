@@ -8,6 +8,20 @@
       Formless hands - Autonomous coding-agent orchestrator for Software
       Engineers
     </title>
+    <script>
+      try {
+        const stored = localStorage.getItem("formless-hands-theme");
+        let theme = stored || "system";
+        if (theme === "system") {
+          theme = window.matchMedia("(prefers-color-scheme: dark)").matches
+            ? "dark"
+            : "light";
+        }
+        if (theme === "dark") {
+          document.documentElement.classList.add("dark");
+        }
+      } catch {}
+    </script>
   </head>
   <body>
     <div id="root"></div>
