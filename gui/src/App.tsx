@@ -1,3 +1,7 @@
+import { RouterProvider } from "@tanstack/react-router";
+import { router } from "./router";
+import "./index.css";
+
 export const App = () => {
-	return <h1>Formless Hands</h1>;
+	return <RouterProvider router={router} />;
 };
