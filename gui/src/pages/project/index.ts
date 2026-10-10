@@ -4,4 +4,4 @@ export { ProjectSettingsPage } from "./settings";
 export { TasksPage } from "./tasks";
 export { TaskDetailPage } from "./tasks/detail";
 export { TaskReviewPage } from "./tasks/detail/review";
-export { WorksPage } from "./works";
+export { WorkDetailPage, WorksPage } from "./works";
