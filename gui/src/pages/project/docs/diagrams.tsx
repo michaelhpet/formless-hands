@@ -639,3 +639,20 @@ export function HealthDiagram() {
 		</svg>
 	);
 }
+
+export function DocsFigure({
+	kind,
+}: {
+	kind: "components" | "runtime" | "er" | "health";
+}) {
+	switch (kind) {
+		case "runtime":
+			return <RuntimeDiagram />;
+		case "er":
+			return <ErDiagram />;
+		case "health":
+			return <HealthDiagram />;
+		default:
+			return <ComponentsDiagram />;
+	}
+}

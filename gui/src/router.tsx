@@ -75,6 +75,10 @@ const TASK_STATUSES: TaskStatus[] = [
 const WORK_STATUSES: WorkStatus[] = ["running", "success", "failed"];
 const WORK_SORTS: WorkSort[] = ["started", "-started", "exit", "-exit"];
 
+export interface DocsSearch {
+	deepdive?: string;
+}
+
 import { SettingsPage } from "./pages/settings";
 
 const rootRoute = createRootRoute({
@@ -191,6 +195,9 @@ const docsRoute = createRoute({
 	getParentRoute: () => projectRoute,
 	path: "/docs",
 	component: DocsPage,
+	validateSearch: (search: Record<string, unknown>): DocsSearch => ({
+		deepdive: parseText(search.deepdive),
+	}),
 });
 
 const projectSettingsRoute = createRoute({
