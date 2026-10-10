@@ -22,6 +22,24 @@ export interface Task {
 	age: string;
 }
 
+export type TaskView = "kanban" | "table" | "attention" | "timeline";
+
+export const TASK_VIEWS: TaskView[] = [
+	"kanban",
+	"table",
+	"attention",
+	"timeline",
+];
+
+export const VIEW_LABELS: Record<TaskView, string> = {
+	kanban: "Kanban",
+	table: "Table",
+	attention: "Attention",
+	timeline: "Timeline",
+};
+
+export const ATTENTION_STATUSES: TaskStatus[] = ["blocked", "needs-context"];
+
 export type KanbanColumnKey =
 	| "needs-triage"
 	| "ready"
@@ -231,6 +249,50 @@ export function sortTasks(tasks: Task[]): Task[] {
 		}
 		return a.id.localeCompare(b.id);
 	});
+}
+
+export function ageToMinutes(age: string): number {
+	const text = age.trim().toLowerCase();
+	if (text === "now") {
+		return 0;
+	}
+	const match = text.match(/^(\d+)\s*([mhdw])$/);
+	if (!match) {
+		return Number.MAX_SAFE_INTEGER;
+	}
+	const amount = Number(match[1]);
+	switch (match[2]) {
+		case "h":
+			return amount * 60;
+		case "d":
+			return amount * 1440;
+		case "w":
+			return amount * 10080;
+		default:
+			return amount;
+	}
+}
+
+export interface AgeGroup {
+	key: string;
+	title: string;
+	tasks: Task[];
+}
+
+export function groupTasksByAge(tasks: Task[]): AgeGroup[] {
+	const groups: AgeGroup[] = [
+		{ key: "now", title: "JUST NOW", tasks: [] },
+		{ key: "today", title: "TODAY", tasks: [] },
+		{ key: "week", title: "THIS WEEK", tasks: [] },
+		{ key: "older", title: "OLDER", tasks: [] },
+	];
+	const limits = [60, 1440, 10080, Number.POSITIVE_INFINITY];
+	for (const task of sortTasks(tasks)) {
+		const minutes = ageToMinutes(task.age);
+		const index = limits.findIndex((limit) => minutes < limit);
+		groups[index === -1 ? groups.length - 1 : index].tasks.push(task);
+	}
+	return groups.filter((group) => group.tasks.length > 0);
 }
 
 export interface TaskStats {

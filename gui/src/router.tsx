@@ -17,7 +17,11 @@ import {
 	WorkDetailPage,
 	WorksPage,
 } from "./pages/project";
-import type { TaskStatus } from "./pages/project/tasks/tasks-data";
+import {
+	TASK_VIEWS,
+	type TaskStatus,
+	type TaskView,
+} from "./pages/project/tasks/tasks-data";
 import type { WorkSort, WorkStatus } from "./pages/project/works/works-data";
 
 export interface ProjectsSearch {
@@ -30,7 +34,7 @@ export interface TasksSearch {
 	q?: string;
 	source?: "linear" | "github";
 	status?: TaskStatus;
-	view?: "kanban" | "table";
+	view?: TaskView;
 	page?: number;
 }
 
@@ -136,8 +140,9 @@ const tasksRoute = createRoute({
 				? (search.status as TaskStatus)
 				: undefined,
 		view:
-			search.view === "kanban" || search.view === "table"
-				? search.view
+			typeof search.view === "string" &&
+			(TASK_VIEWS as string[]).includes(search.view)
+				? (search.view as TaskView)
 				: undefined,
 		page: parsePage(search.page),
 	}),

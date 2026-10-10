@@ -32,6 +32,7 @@ import {
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useDebounce } from "@/hooks/use-debounce";
 import type { TasksSearch } from "@/router";
+import { AttentionView } from "./attention-view";
 import { NewTaskDialog, type NewTaskInput } from "./new-task-dialog";
 import { TaskKanban } from "./task-kanban";
 import {
@@ -41,13 +42,17 @@ import {
 	STATUS_LABELS,
 	sortTasks,
 	summarizeTasks,
+	TASK_VIEWS,
 	type Task,
 	type TaskSourceKind,
 	type TaskStatus,
+	type TaskView,
+	VIEW_LABELS,
 } from "./tasks-data";
 import { TasksTableView } from "./tasks-table-view";
+import { TimelineView } from "./timeline-view";
 
-type View = "kanban" | "table";
+type View = TaskView;
 type SourceFilter = "all" | TaskSourceKind;
 type StatusFilter = "all" | TaskStatus;
 
@@ -257,12 +262,15 @@ export function TasksPage() {
 						}}
 						aria-label="Switch view"
 					>
-						<ToggleGroupItem value="kanban" aria-label="Show kanban view">
-							Kanban
-						</ToggleGroupItem>
-						<ToggleGroupItem value="table" aria-label="Show table view">
-							Table
-						</ToggleGroupItem>
+						{TASK_VIEWS.map((option) => (
+							<ToggleGroupItem
+								key={option}
+								value={option}
+								aria-label={`Show ${VIEW_LABELS[option].toLowerCase()} view`}
+							>
+								{VIEW_LABELS[option]}
+							</ToggleGroupItem>
+						))}
 					</ToggleGroup>
 				</div>
 			</div>
@@ -289,8 +297,12 @@ export function TasksPage() {
 				</Empty>
 			) : view === "kanban" ? (
 				<TaskKanban tasks={visible} />
-			) : (
+			) : view === "table" ? (
 				<TasksTableView key={`${query}-${status}-${source}`} tasks={visible} />
+			) : view === "attention" ? (
+				<AttentionView tasks={visible} />
+			) : (
+				<TimelineView tasks={visible} />
 			)}
 		</div>
 	);
