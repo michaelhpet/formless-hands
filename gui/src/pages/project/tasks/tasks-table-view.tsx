@@ -28,7 +28,7 @@ import {
 import { PriorityLabel, TaskStatusMark } from "./task-utils";
 import type { Task } from "./tasks-data";
 
-const PAGE_SIZE = 8;
+const PAGE_SIZE = 10;
 
 function TaskRowMenu({ task }: { task: Task }) {
 	const copy = async (text: string) => {

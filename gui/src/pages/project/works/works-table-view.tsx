@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/table";
 import type { Work } from "./works-data";
 
-const PAGE_SIZE = 8;
+const PAGE_SIZE = 10;
 
 function WorkRowMenu({ work }: { work: Work }) {
 	const copy = async (text: string) => {

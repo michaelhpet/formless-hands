@@ -159,7 +159,7 @@ export const INITIAL_PROJECTS: Project[] = [
 
 type StatusFilter = "all" | ProjectStatus;
 
-const PAGE_SIZE = 5;
+const PAGE_SIZE = 10;
 
 function SourcesCell({ sources }: { sources: ProjectSource[] }) {
 	if (sources.length === 0) {
