@@ -25,7 +25,7 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { PriorityLabel, TaskStatusMark } from "./task-utils";
-import type { Task } from "./tasks-data";
+import { SOURCE_LABELS, type Task } from "./tasks-data";
 
 const PAGE_SIZE = 10;
 
@@ -104,7 +104,7 @@ function TaskTableRow({ task }: { task: Task }) {
 						className="size-1.5 rounded-full bg-foreground"
 						aria-hidden="true"
 					/>
-					{task.source}
+					{SOURCE_LABELS[task.source]}
 				</span>
 			</TableCell>
 			<TableCell>

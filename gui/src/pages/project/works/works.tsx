@@ -194,30 +194,30 @@ export function WorksPage() {
 				<StatCard
 					label="TOTAL WORKS"
 					value={String(stats.total)}
-					sub="this project"
+					sub="This project"
 				/>
 				<StatCard
 					label="RUNNING"
 					value={String(stats.running)}
-					sub="in worktrees now"
+					sub="In worktrees now"
 					valueClassName="text-warning"
 				/>
 				<StatCard
 					label="SUCCESS"
 					value={`${stats.successRate}%`}
-					sub="exit 0"
+					sub="Exit 0"
 					valueClassName="text-success"
 				/>
 				<StatCard
 					label="FAILED"
 					value={String(stats.failed)}
-					sub="exit ≠ 0"
+					sub="Exit ≠ 0"
 					valueClassName="text-destructive"
 				/>
 				<StatCard
 					label="AVG DURATION"
 					value={stats.avgDuration}
-					sub="per finished work"
+					sub="Per finished work"
 				/>
 			</div>
 

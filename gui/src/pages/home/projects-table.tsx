@@ -162,9 +162,18 @@ type StatusFilter = "all" | ProjectStatus;
 
 const PAGE_SIZE = 10;
 
+const SOURCE_DISPLAY: Record<string, string> = {
+	linear: "Linear",
+	github: "GitHub",
+};
+
+function sourceDisplay(name: string): string {
+	return SOURCE_DISPLAY[name] ?? name.charAt(0).toUpperCase() + name.slice(1);
+}
+
 function SourcesCell({ sources }: { sources: ProjectSource[] }) {
 	if (sources.length === 0) {
-		return <span className="text-muted-foreground">— no sources</span>;
+		return <span className="text-muted-foreground">— No sources</span>;
 	}
 	return (
 		<span className="flex flex-col gap-0.5">
@@ -185,7 +194,7 @@ function SourcesCell({ sources }: { sources: ProjectSource[] }) {
 						)}
 						aria-hidden="true"
 					/>
-					{source.name} {source.on ? "on" : "off"}
+					{sourceDisplay(source.name)} {source.on ? "On" : "Off"}
 				</span>
 			))}
 		</span>
@@ -194,7 +203,7 @@ function SourcesCell({ sources }: { sources: ProjectSource[] }) {
 
 function TasksCell({ project }: { project: Project }) {
 	if (project.tasksRunning === 0 && project.tasksFailed === 0) {
-		return <span className="text-muted-foreground">— idle</span>;
+		return <span className="text-muted-foreground">— Idle</span>;
 	}
 	return (
 		<span className="flex flex-col gap-0.5">

@@ -313,7 +313,7 @@ export function WorksTableView({ works }: { works: Work[] }) {
 						? "0 works"
 						: `${start + 1}–${start + pageItems.length} of ${works.length}`}
 					{selected.size > 0 ? ` · ${selected.size} selected` : ""}
-					{" · log_path tail -f · click row → work detail"}
+					{" · Logs stream with tail -f · click a row for work detail"}
 				</p>
 				{pageCount > 1 ? (
 					<Pagination className="mx-0 w-auto">

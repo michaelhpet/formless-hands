@@ -51,7 +51,7 @@ function SectionBody({
 		<>
 			<div className="flex flex-col gap-1 px-3.5 pt-3 pb-1">
 				<p className="text-[13px] leading-5 text-foreground">{description}</p>
-				<p className="text-muted-foreground">refs → {refs}</p>
+				<p className="text-muted-foreground">Refs → {refs}</p>
 			</div>
 			{children ? <div className="p-3.5">{children}</div> : null}
 		</>
@@ -61,14 +61,14 @@ function SectionBody({
 export function DocsPage() {
 	const [regenerating, setRegenerating] = useState(false);
 	const [freshness, setFreshness] = useState(
-		"generated Oct 10 · from live repo",
+		"Generated Oct 10 · from live repo",
 	);
 
 	const regenerate = () => {
 		setRegenerating(true);
 		window.setTimeout(() => {
 			setRegenerating(false);
-			setFreshness("generated just now · from live repo");
+			setFreshness("Generated just now · from live repo");
 		}, 1200);
 	};
 
@@ -102,11 +102,11 @@ export function DocsPage() {
 						one file holds projects, sources, tasks, works, and reviews.
 					</p>
 					<div className="flex flex-wrap items-center gap-2">
-						<span className="text-muted-foreground">scenarios →</span>
+						<span className="text-muted-foreground">Scenarios →</span>
 						{[
-							"issue → merged PR",
-							"blocked → human note → retry",
-							"new source → first poll",
+							"Issue → merged PR",
+							"Blocked → human note → retry",
+							"New source → first poll",
 						].map((scenario) => (
 							<span key={scenario} className="border bg-background px-2.5 py-1">
 								{scenario}
@@ -114,7 +114,7 @@ export function DocsPage() {
 						))}
 					</div>
 					<p className="text-muted-foreground">
-						refs → core/src/main.rs · core/src/db.rs · gui/src/router.tsx
+						Refs → core/src/main.rs · core/src/db.rs · gui/src/router.tsx
 					</p>
 				</div>
 
@@ -192,29 +192,29 @@ export function DocsPage() {
 								<span className="text-foreground">
 									ADR-041 · backoff state lives in task metadata
 								</span>
-								<span className="text-success">accepted</span>
+								<span className="text-success">Accepted</span>
 							</div>
 							<p className="text-[12px] leading-4.5 text-foreground">
 								Survives repolls and worker restarts; alternative (in-memory
 								delay) lost state on every crash. Touches poller · db.
 							</p>
-							<p className="text-muted-foreground">from work #128 · LIN-142</p>
+							<p className="text-muted-foreground">From work #128 · LIN-142</p>
 						</div>
 						<div className="flex flex-col gap-1.5 border-l-2 border-l-warning bg-background px-3 py-2.5">
 							<div className="flex items-center justify-between">
 								<span className="text-foreground">
 									ADR-040 · single refresh helper in auth.rs
 								</span>
-								<span className="text-warning">proposed</span>
+								<span className="text-warning">Proposed</span>
 							</div>
 							<p className="text-[12px] leading-4.5 text-foreground">
 								One path for token refresh removes the inline retry that caused
 								the loop. Awaiting human sign-off.
 							</p>
-							<p className="text-muted-foreground">from work #121 · LIN-142</p>
+							<p className="text-muted-foreground">From work #121 · LIN-142</p>
 						</div>
 						<p className="text-muted-foreground">
-							full text lives with the work transcript — these are the approved
+							Full text lives with the work transcript — these are the approved
 							summaries
 						</p>
 					</div>

@@ -1,4 +1,9 @@
-import type { Task, TaskSourceKind, TaskStatus } from "../tasks-data";
+import {
+	SOURCE_LABELS,
+	type Task,
+	type TaskSourceKind,
+	type TaskStatus,
+} from "../tasks-data";
 
 export interface AcceptanceItem {
 	text: string;
@@ -85,9 +90,9 @@ const LIN_142: TaskDetail = {
 		"The loop also masks the real failure — by the time anyone looks, the log window only shows retries, never the original 401 with its scope and timestamp. Backoff state must be visible in task metadata so the next run can resume the delay instead of starting cold.",
 	],
 	criteria: [
-		{ text: "no more than 1 refresh per minute per source", done: true },
-		{ text: "backoff state visible in task metadata", done: false },
-		{ text: "existing sessions untouched by the fix", done: false },
+		{ text: "No more than 1 refresh per minute per source", done: true },
+		{ text: "Backoff state visible in task metadata", done: false },
+		{ text: "Existing sessions untouched by the fix", done: false },
 	],
 	attachments: [
 		{ name: "log-flood.png", size: "84 KB" },
@@ -132,14 +137,14 @@ const LIN_142: TaskDetail = {
 	pr: "—",
 	labels: "[auth] [bug]",
 	attempts: "2",
-	locked: "no",
+	locked: "No",
 	created: "Oct 7",
 	updated: "12m ago",
 	activity: [
-		{ text: "work #128 started", sub: "12m ago · wt-auth-fix" },
-		{ text: "attempt 1 failed", sub: "2h ago · 401 from token endpoint" },
-		{ text: "triaged → in-progress", sub: "1d ago · instructions set" },
-		{ text: "polled from linear", sub: "2d ago · LIN-142" },
+		{ text: "Work #128 started", sub: "12m ago · wt-auth-fix" },
+		{ text: "Attempt 1 failed", sub: "2h ago · 401 from token endpoint" },
+		{ text: "Triaged → In progress", sub: "1d ago · instructions set" },
+		{ text: "Polled from Linear", sub: "2d ago · LIN-142" },
 	],
 };
 
@@ -170,7 +175,10 @@ function fallbackDetail(task: Task): TaskDetail {
 		created: age,
 		updated: age,
 		activity: [
-			{ text: `polled from ${task.source}`, sub: `${age} · ${task.id}` },
+			{
+				text: `Polled from ${SOURCE_LABELS[task.source]}`,
+				sub: `${age} · ${task.id}`,
+			},
 		],
 	};
 }

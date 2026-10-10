@@ -16,23 +16,38 @@ export function PriorityLabel({ priority }: { priority: 0 | 1 | 2 | 3 }) {
 	);
 }
 
-const STATUS_MARK: Record<TaskStatus, { glyph: string; className: string }> = {
-	open: { glyph: "○", className: "text-muted-foreground" },
-	triaged: { glyph: "●", className: "text-foreground" },
-	"in-progress": { glyph: "●", className: "text-warning" },
-	completed: { glyph: "●", className: "text-foreground" },
-	"in-review": { glyph: "●", className: "text-foreground" },
-	merged: { glyph: "●", className: "text-success" },
-	closed: { glyph: "●", className: "text-muted-foreground" },
-	blocked: { glyph: "●", className: "text-destructive" },
-	"needs-context": { glyph: "●", className: "text-destructive" },
+const STATUS_MARK: Record<
+	TaskStatus,
+	{ glyph: string; label: string; className: string }
+> = {
+	open: { glyph: "○", label: "Open", className: "text-muted-foreground" },
+	triaged: { glyph: "●", label: "Triaged", className: "text-foreground" },
+	"in-progress": {
+		glyph: "●",
+		label: "In progress",
+		className: "text-warning",
+	},
+	completed: { glyph: "●", label: "Completed", className: "text-foreground" },
+	"in-review": {
+		glyph: "●",
+		label: "In review",
+		className: "text-foreground",
+	},
+	merged: { glyph: "●", label: "Merged", className: "text-success" },
+	closed: { glyph: "●", label: "Closed", className: "text-muted-foreground" },
+	blocked: { glyph: "●", label: "Blocked", className: "text-destructive" },
+	"needs-context": {
+		glyph: "●",
+		label: "Needs context",
+		className: "text-destructive",
+	},
 };
 
 export function TaskStatusMark({ status }: { status: TaskStatus }) {
 	const mark = STATUS_MARK[status];
 	return (
 		<span className={cn("flex items-center gap-1.5", mark.className)}>
-			{mark.glyph} {status}
+			{mark.glyph} {mark.label}
 		</span>
 	);
 }

@@ -40,7 +40,9 @@ export function StatusBadge({
 				className={cn("size-1.5 rounded-full", dotStyles[status])}
 				aria-hidden="true"
 			/>
-			<span className={textStyles[status]}>{status}</span>
+			<span className={textStyles[status]}>
+				{status.charAt(0).toUpperCase() + status.slice(1)}
+			</span>
 		</Badge>
 	);
 }

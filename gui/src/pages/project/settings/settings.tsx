@@ -25,6 +25,15 @@ interface EditableSource {
 	cursor: string;
 }
 
+const SOURCE_DISPLAY: Record<string, string> = {
+	linear: "Linear",
+	github: "GitHub",
+};
+
+function sourceDisplay(name: string): string {
+	return SOURCE_DISPLAY[name] ?? name.charAt(0).toUpperCase() + name.slice(1);
+}
+
 const SOURCE_DEFAULTS: Record<string, { config: string; cursor: string }> = {
 	linear: { config: "team = ENG", cursor: "08f3" },
 	github: { config: "repo = you/formless-hands", cursor: "91bd" },
@@ -240,7 +249,7 @@ export function ProjectSettingsPage() {
 										)}
 										aria-hidden="true"
 									/>
-									{source.name}
+									{sourceDisplay(source.name)}
 								</span>
 								<span className="text-muted-foreground">
 									{source.config} · cursor {source.cursor}
@@ -250,7 +259,7 @@ export function ProjectSettingsPage() {
 									type="button"
 									onClick={() => toggleSource(source.name)}
 									aria-pressed={source.on}
-									aria-label={`Turn ${source.name} ${source.on ? "off" : "on"}`}
+									aria-label={`Turn ${sourceDisplay(source.name)} ${source.on ? "off" : "on"}`}
 									className="border bg-muted px-2.5 py-1 hover:bg-muted/50"
 								>
 									<span
@@ -258,7 +267,7 @@ export function ProjectSettingsPage() {
 											source.on ? "text-foreground" : "text-muted-foreground",
 										)}
 									>
-										● {source.on ? "on" : "off"}
+										● {source.on ? "On" : "Off"}
 									</span>
 								</button>
 								<button

@@ -149,7 +149,7 @@ function ReviewSection({
 									{comment.author} · {comment.path}
 								</span>
 								<span className={resolved ? "text-success" : "text-warning"}>
-									{comment.state}
+									{resolved ? "Resolved" : "Open"}
 								</span>
 							</div>
 							<p
@@ -184,7 +184,7 @@ function ReviewSection({
 												className="underline-offset-4 hover:underline"
 												onClick={() => onStartReply(index)}
 											>
-												reply
+												Reply
 											</button>
 										</>
 									)}
@@ -384,7 +384,7 @@ export function TaskDetailPage() {
 										...comment,
 										replies: [
 											...comment.replies,
-											{ author: "you", age: "just now", body },
+											{ author: "You", age: "just now", body },
 										],
 									}
 								: comment,
@@ -405,7 +405,7 @@ export function TaskDetailPage() {
 			prev
 				? {
 						...prev,
-						notes: [...prev.notes, { author: "you", age: "just now", body }],
+						notes: [...prev.notes, { author: "You", age: "just now", body }],
 					}
 				: prev,
 		);

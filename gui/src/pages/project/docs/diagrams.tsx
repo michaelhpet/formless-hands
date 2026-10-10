@@ -114,7 +114,7 @@ export function ComponentsDiagram() {
 				opencode CLI
 			</text>
 			<text x="916" y="73" textAnchor="middle" fontSize="10" fill="#A1A1AA">
-				worktree per work
+				Worktree per work
 			</text>
 			<rect
 				x="820"
@@ -126,10 +126,10 @@ export function ComponentsDiagram() {
 				stroke="#262626"
 			/>
 			<text x="916" y="185" textAnchor="middle" fontSize="12" fill="#FAFAFA">
-				linear · github
+				Linear · GitHub
 			</text>
 			<text x="916" y="203" textAnchor="middle" fontSize="10" fill="#A1A1AA">
-				task sources
+				Task sources
 			</text>
 			<line
 				x1="170"
@@ -480,7 +480,7 @@ export function RuntimeDiagram() {
 				stroke="#262626"
 			/>
 			<text x="915" y="37" textAnchor="middle" fontSize="11" fill="#FAFAFA">
-				forge · github
+				Forge · GitHub
 			</text>
 			<line
 				x1="95"
@@ -536,7 +536,7 @@ export function RuntimeDiagram() {
 				strokeWidth="1.5"
 			/>
 			<text x="370" y="112" fontSize="10" fill="#A1A1AA">
-				claim LIN-142 · P0 first
+				Claim LIN-142 · P0 first
 			</text>
 			<rect
 				x="635"
@@ -557,7 +557,7 @@ export function RuntimeDiagram() {
 				strokeWidth="1.5"
 			/>
 			<text x="640" y="151" fontSize="10" fill="#FACC15">
-				worktree + transcript
+				Worktree + transcript
 			</text>
 			<line
 				x1="635"
@@ -593,7 +593,7 @@ export function RuntimeDiagram() {
 				strokeWidth="1.5"
 			/>
 			<text x="420" y="262" fontSize="10" fill="#22C55E">
-				merged → closed
+				Merged → closed
 			</text>
 		</svg>
 	);
@@ -612,7 +612,7 @@ export function HealthDiagram() {
 			aria-label="Average work lead time per day, falling from 48 minutes Tuesday to 12 minutes Thursday, with poller.rs flagged as hotspot"
 		>
 			<text x="20" y="24" fontSize="10" fill="#A1A1AA">
-				avg work lead time · min
+				Avg work lead time · min
 			</text>
 			<g>
 				<rect x="20" y="40" width="180" height="18" fill="#00598A" />
@@ -634,7 +634,7 @@ export function HealthDiagram() {
 			</g>
 			<line x1="20" y1="142" x2="1012" y2="142" stroke="#262626" />
 			<text x="20" y="160" fontSize="10" fill="#FACC15">
-				hotspot · src/poller.rs — 14 churn × high complexity
+				Hotspot · src/poller.rs — 14 churn × high complexity
 			</text>
 		</svg>
 	);

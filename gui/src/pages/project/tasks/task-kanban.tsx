@@ -7,6 +7,7 @@ import {
 	columnForStatus,
 	KANBAN_COLUMNS,
 	type KanbanColumnKey,
+	SOURCE_LABELS,
 	type Task,
 } from "./tasks-data";
 
@@ -50,7 +51,7 @@ function TaskCard({ task }: { task: Task }) {
 			<CardContent className="flex flex-col gap-1.5">
 				<div className="flex items-center justify-between">
 					<span className="text-muted-foreground">
-						{task.id} · {task.source}
+						{task.id} · {SOURCE_LABELS[task.source]}
 					</span>
 					<PriorityLabel priority={task.priority} />
 				</div>

@@ -80,10 +80,10 @@ export function StatCards({ projectCount }: { projectCount: number }) {
 				<CardContent className="flex flex-col gap-1.5">
 					<div className="text-[26px] leading-8 font-bold">4/5</div>
 					<div className="flex gap-1.5">
-						<span className="text-success">● linear 3</span>
-						<span className="text-muted-foreground">● github 1</span>
+						<span className="text-success">● Linear 3</span>
+						<span className="text-muted-foreground">● GitHub 1</span>
 					</div>
-					<p className="text-muted-foreground">polled 30s ago</p>
+					<p className="text-muted-foreground">Polled 30s ago</p>
 				</CardContent>
 			</Card>
 		</div>

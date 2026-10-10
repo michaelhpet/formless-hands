@@ -16,6 +16,7 @@ import {
 	EmptyTitle,
 } from "@/components/ui/empty";
 import { PriorityLabel, TaskStatusMark } from "../../tasks/task-utils";
+import { SOURCE_LABELS } from "../../tasks/tasks-data";
 import { INITIAL_WORKS, type WorkStatus } from "../works-data";
 import { getWorkDetail, type TranscriptTone } from "./work-detail-data";
 
@@ -50,7 +51,7 @@ function TranscriptCard({
 					className="text-warning hover:underline hover:underline-offset-4"
 					aria-pressed={autoscroll}
 				>
-					autoscroll {autoscroll ? "on" : "off"}
+					Autoscroll {autoscroll ? "on" : "off"}
 				</button>
 			</div>
 			<div className="flex flex-col gap-1.5 p-3.5">
@@ -65,7 +66,7 @@ function TranscriptCard({
 				{live ? <span className="text-[12px] text-warning">▊</span> : null}
 			</div>
 			<p className="border-t px-3.5 py-2.5 text-muted-foreground">
-				{live ? "streaming" : "finished"} · {lines.length} lines · exit{" "}
+				{live ? "Streaming" : "Finished"} · {lines.length} lines · exit{" "}
 				{exitCode === null ? "—" : exitCode}
 			</p>
 		</Card>
@@ -190,7 +191,7 @@ export function WorkDetailPage() {
 									className="size-1.5 rounded-full bg-warning"
 									aria-hidden="true"
 								/>
-								<span className="text-warning">live · tail -f</span>
+								<span className="text-warning">Live · tail -f</span>
 							</Badge>
 						) : null}
 						{live ? (
@@ -227,13 +228,13 @@ export function WorkDetailPage() {
 										}}
 										className="text-muted-foreground hover:text-foreground hover:underline hover:underline-offset-4"
 									>
-										open task →
+										Open task →
 									</Link>
 								) : null}
 							</div>
 							<p className="text-muted-foreground">
 								{detail.taskRef}
-								{detail.task ? ` · ${detail.task.source}` : ""}
+								{detail.task ? ` · ${SOURCE_LABELS[detail.task.source]}` : ""}
 							</p>
 							<p className="text-[13px] leading-4.75 font-bold text-foreground">
 								{detail.taskTitle}

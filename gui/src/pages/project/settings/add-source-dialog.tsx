@@ -31,6 +31,15 @@ const KIND_HINTS: Record<string, string> = {
 	github: "repo = you/repo",
 };
 
+const KIND_LABELS: Record<string, string> = {
+	linear: "Linear",
+	github: "GitHub",
+};
+
+function kindLabel(kind: string): string {
+	return KIND_LABELS[kind] ?? kind.charAt(0).toUpperCase() + kind.slice(1);
+}
+
 export function AddSourceDialog({
 	existing,
 	onCreate,
@@ -57,7 +66,7 @@ export function AddSourceDialog({
 							<IconPlus className="size-4" />
 							Add source
 						</span>
-						<span className="text-muted-foreground">linear · github</span>
+						<span className="text-muted-foreground">Linear · GitHub</span>
 					</button>
 				}
 			/>
@@ -95,7 +104,7 @@ export function AddSourceDialog({
 									name="kind"
 									defaultValue={available[0]}
 									items={Object.fromEntries(
-										available.map((kind) => [kind, kind]),
+										available.map((kind) => [kind, kindLabel(kind)]),
 									)}
 								>
 									<SelectTrigger id="new-source-kind" className="w-full">
@@ -104,7 +113,7 @@ export function AddSourceDialog({
 									<SelectContent>
 										{available.map((kind) => (
 											<SelectItem key={kind} value={kind}>
-												{kind}
+												{kindLabel(kind)}
 											</SelectItem>
 										))}
 									</SelectContent>

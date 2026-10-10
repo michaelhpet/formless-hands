@@ -3,6 +3,7 @@ import { cn } from "cn";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { PriorityLabel, TaskStatusMark } from "../task-utils";
+import { SOURCE_LABELS } from "../tasks-data";
 import type { TaskDetail, WorkStatus } from "./task-detail-data";
 
 const WORK_DOT: Record<WorkStatus, string> = {
@@ -10,6 +11,13 @@ const WORK_DOT: Record<WorkStatus, string> = {
 	failed: "text-destructive",
 	success: "text-success",
 	queued: "text-muted-foreground",
+};
+
+const WORK_LABEL: Record<WorkStatus, string> = {
+	running: "Running",
+	failed: "Failed",
+	success: "Success",
+	queued: "Queued",
 };
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
@@ -70,7 +78,7 @@ export function TaskDetailSidebar({
 						params={{ projectId }}
 						className="text-muted-foreground hover:text-foreground"
 					>
-						view all →
+						View all →
 					</Link>
 				</div>
 				{detail.works.length === 0 ? (
@@ -87,7 +95,7 @@ export function TaskDetailSidebar({
 											WORK_DOT[work.status],
 										)}
 									>
-										● {work.status}
+										● {WORK_LABEL[work.status]}
 									</span>
 								</div>
 								<span className="text-muted-foreground">{work.meta}</span>
@@ -112,7 +120,7 @@ export function TaskDetailSidebar({
 							className="size-1.5 rounded-full bg-foreground"
 							aria-hidden="true"
 						/>
-						{detail.source} ↗
+						{SOURCE_LABELS[detail.source]} ↗
 					</span>
 				</DetailRow>
 				<DetailRow label="Branch">

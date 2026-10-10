@@ -121,7 +121,7 @@ export function TaskReviewPage() {
 													...hunk.thread,
 													replies: [
 														...hunk.thread.replies,
-														{ author: "you", age: "just now", body },
+														{ author: "You", age: "just now", body },
 													],
 												},
 											},
@@ -177,7 +177,7 @@ export function TaskReviewPage() {
 									approved ? "text-success" : "text-destructive",
 								)}
 							>
-								● {approved ? "approved" : "changes requested"}
+								● {approved ? "Approved" : "Changes requested"}
 							</span>
 						</Badge>
 						<FinishReviewMenu
@@ -196,7 +196,7 @@ export function TaskReviewPage() {
 				<Card>
 					<CardContent className="flex flex-col gap-1.5">
 						<div className="flex items-center justify-between">
-							<span className="text-foreground">you · just now</span>
+							<span className="text-foreground">You · just now</span>
 							<span
 								className={
 									summary.decision === "approved"
@@ -205,8 +205,8 @@ export function TaskReviewPage() {
 								}
 							>
 								{summary.decision === "approved"
-									? "approved"
-									: "changes requested"}
+									? "Approved"
+									: "Changes requested"}
 							</span>
 						</div>
 						<p className="text-[13px] leading-4.5 text-foreground">

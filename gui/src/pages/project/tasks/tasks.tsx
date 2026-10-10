@@ -189,28 +189,28 @@ export function TasksPage() {
 				<StatCard
 					label="NEEDS TRIAGE"
 					value={stats.needsTriage}
-					sub="awaiting triage"
+					sub="Awaiting triage"
 				/>
 				<StatCard
 					label="READY"
 					value={stats.ready}
-					sub={`${stats.ready} ready to start`}
+					sub={`${stats.ready} Ready to start`}
 				/>
 				<StatCard
 					label="IN PROGRESS"
 					value={stats.inProgress}
-					sub="active works"
+					sub="Active works"
 					valueClassName="text-warning"
 				/>
 				<StatCard
 					label="COMPLETED"
 					value={stats.completed}
-					sub={`${stats.completed} awaiting review`}
+					sub={`${stats.completed} Awaiting review`}
 				/>
 				<StatCard
 					label="DONE"
 					value={stats.done}
-					sub={`${stats.done} approved`}
+					sub={`${stats.done} Approved`}
 					valueClassName="text-success"
 				/>
 			</div>

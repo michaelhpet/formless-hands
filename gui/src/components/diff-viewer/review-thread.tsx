@@ -38,7 +38,7 @@ export function ThreadBox({
 					{thread.author} · {thread.path}
 				</span>
 				<span className={resolved ? "text-success" : "text-warning"}>
-					{thread.state}
+					{resolved ? "Resolved" : "Open"}
 				</span>
 			</div>
 			<p className="text-[13px] leading-4.75 text-foreground">{thread.body}</p>

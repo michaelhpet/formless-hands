@@ -87,7 +87,7 @@ export function SettingsPage() {
 						<div className="flex flex-col divide-y divide-border">
 							<SettingRow
 								label="Poll schedule"
-								hint="how often task sources are polled"
+								hint="How often task sources are polled"
 							>
 								<Input
 									aria-label="Poll schedule (cron)"
@@ -100,7 +100,7 @@ export function SettingsPage() {
 							</SettingRow>
 							<SettingRow
 								label="Watch schedule"
-								hint="how often worktrees are watched"
+								hint="How often worktrees are watched"
 							>
 								<Input
 									aria-label="Watch schedule (cron)"
@@ -113,7 +113,7 @@ export function SettingsPage() {
 							</SettingRow>
 							<SettingRow
 								label="Max concurrent workers"
-								hint="agents working at the same time"
+								hint="Agents working at the same time"
 							>
 								<div className="flex items-center border bg-background">
 									<button
@@ -154,7 +154,7 @@ export function SettingsPage() {
 							SERVER · GUI + API
 						</h2>
 						<div className="flex flex-col divide-y divide-border">
-							<SettingRow label="Port" hint="gui + /api serve here">
+							<SettingRow label="Port" hint="GUI + /api serves here">
 								<Input
 									aria-label="Server port"
 									value={port}
@@ -166,9 +166,9 @@ export function SettingsPage() {
 									autoComplete="off"
 								/>
 							</SettingRow>
-							<SettingRow label="Status" hint="local loopback only">
+							<SettingRow label="Status" hint="Local loopback only">
 								<span className="text-success">
-									● listening · 127.0.0.1:{port || "—"}
+									● Listening · 127.0.0.1:{port || "—"}
 								</span>
 							</SettingRow>
 						</div>
