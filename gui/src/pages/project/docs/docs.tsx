@@ -133,9 +133,7 @@ export function DocsPage() {
 	);
 	const panelRef = useRef<HTMLDivElement>(null);
 
-	const fallbackDive =
-		docs.sections.find((section) => section.deepDiveKey)?.deepDiveKey ?? null;
-	const deepDive = search.deepdive ?? fallbackDive;
+	const deepDive = search.deepdive ?? null;
 
 	const updateSearch = (patch: Partial<DocsSearch>) => {
 		navigate({
