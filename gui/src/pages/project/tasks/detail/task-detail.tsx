@@ -500,6 +500,7 @@ export function TaskDetailPage() {
 								<Link
 									to="/$projectId/works"
 									params={{ projectId: projectId ?? "" }}
+									search={{ task: detail.id }}
 								>
 									<Button>See work</Button>
 								</Link>

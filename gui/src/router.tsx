@@ -43,6 +43,7 @@ export interface WorksSearch {
 	status?: WorkStatus;
 	sort?: WorkSort;
 	worktree?: string;
+	task?: string;
 	page?: number;
 }
 
@@ -181,6 +182,7 @@ const worksRoute = createRoute({
 				? (search.sort as WorkSort)
 				: undefined,
 		worktree: parseText(search.worktree),
+		task: parseText(search.task),
 		page: parsePage(search.page),
 	}),
 });

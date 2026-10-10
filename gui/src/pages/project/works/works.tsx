@@ -1,4 +1,4 @@
-import { IconSearch } from "@tabler/icons-react";
+import { IconSearch, IconX } from "@tabler/icons-react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { cn } from "cn";
 import { useState } from "react";
@@ -79,6 +79,7 @@ export function WorksPage() {
 	const status: WorkStatusFilter = search.status ?? "all";
 	const sort = search.sort ?? DEFAULT_SORT;
 	const worktree = search.worktree ?? "all";
+	const task = search.task ?? "";
 
 	const updateSearch = (patch: Partial<WorksSearch>) => {
 		navigate({
@@ -115,6 +116,12 @@ export function WorksPage() {
 			if (worktree !== "all" && work.worktree !== worktree) {
 				return false;
 			}
+			if (
+				task.trim() !== "" &&
+				work.taskRef.toLowerCase() !== task.trim().toLowerCase()
+			) {
+				return false;
+			}
 			const q = query.trim().toLowerCase();
 			if (!q) {
 				return true;
@@ -145,12 +152,16 @@ export function WorksPage() {
 	};
 
 	const filtering =
-		query.trim() !== "" || status !== "all" || worktree !== "all";
+		query.trim() !== "" ||
+		status !== "all" ||
+		worktree !== "all" ||
+		task.trim() !== "";
 	const clearFilters = () => {
 		updateSearch({
 			q: undefined,
 			status: undefined,
 			worktree: undefined,
+			task: undefined,
 			page: undefined,
 		});
 	};
@@ -255,6 +266,22 @@ export function WorksPage() {
 				</div>
 			</div>
 
+			{task.trim() !== "" ? (
+				<div className="flex items-center gap-2">
+					<span className="flex items-center gap-1.5 border bg-card px-2.5 py-1">
+						Task {task.trim()}
+						<button
+							type="button"
+							onClick={() => updateSearch({ task: undefined, page: undefined })}
+							aria-label={`Clear task filter ${task.trim()}`}
+							className="cursor-pointer text-muted-foreground hover:text-foreground"
+						>
+							<IconX className="size-3.5" />
+						</button>
+					</span>
+				</div>
+			) : null}
+
 			{visible.length === 0 ? (
 				<Empty>
 					<EmptyHeader>
@@ -278,7 +305,7 @@ export function WorksPage() {
 				</Empty>
 			) : (
 				<WorksTableView
-					key={`${query}-${status}-${sort}-${worktree}`}
+					key={`${query}-${status}-${sort}-${worktree}-${task}`}
 					works={visible}
 				/>
 			)}
