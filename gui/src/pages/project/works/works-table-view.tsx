@@ -26,7 +26,14 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
-import type { Work } from "./works-data";
+import {
+	ariaSort,
+	DEFAULT_SORT,
+	sortIndicator,
+	toggleSort,
+	type Work,
+	type WorkSortKey,
+} from "./works-data";
 
 const PAGE_SIZE = 10;
 
@@ -51,7 +58,7 @@ function WorkRowMenu({ work }: { work: Work }) {
 					</Button>
 				}
 			/>
-			<DropdownMenuContent align="end">
+			<DropdownMenuContent align="end" className="min-w-52">
 				<DropdownMenuGroup>
 					<DropdownMenuItem onClick={() => void copy(work.branch)}>
 						<IconCopy data-icon="inline-start" />
@@ -143,10 +150,45 @@ function WorkTableRow({
 	);
 }
 
+function SortButton({
+	label,
+	indicator,
+	onClick,
+}: {
+	label: string;
+	indicator: string;
+	onClick: () => void;
+}) {
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			aria-label={`Sort by ${label.toLowerCase()}`}
+			className="flex cursor-pointer items-center gap-1 uppercase hover:text-foreground"
+		>
+			{label}
+			{indicator ? <span aria-hidden="true">{indicator}</span> : null}
+		</button>
+	);
+}
+
 export function WorksTableView({ works }: { works: Work[] }) {
 	const navigate = useNavigate();
 	const search = useSearch({ from: "/$projectId/works" });
 	const page = search.page ?? 1;
+	const sort = search.sort ?? DEFAULT_SORT;
+
+	const changeSort = (key: WorkSortKey) => {
+		const next = toggleSort(sort, key);
+		navigate({
+			from: "/$projectId/works",
+			search: (prev) => ({
+				...prev,
+				sort: next === DEFAULT_SORT ? undefined : next,
+			}),
+			replace: true,
+		});
+	};
 	const [selected, setSelected] = useState<Set<number>>(new Set());
 
 	const pageCount = Math.max(1, Math.ceil(works.length / PAGE_SIZE));
@@ -209,8 +251,15 @@ export function WorksTableView({ works }: { works: Work[] }) {
 									onCheckedChange={togglePage}
 								/>
 							</TableHead>
-							<TableHead className="w-20 text-muted-foreground">
-								WORK ↓
+							<TableHead
+								className="w-20 text-muted-foreground"
+								aria-sort={ariaSort(sort, "started")}
+							>
+								<SortButton
+									label="Work"
+									indicator={sortIndicator(sort, "started")}
+									onClick={() => changeSort("started")}
+								/>
 							</TableHead>
 							<TableHead className="text-muted-foreground">
 								TASK / task_id
@@ -218,10 +267,26 @@ export function WorksTableView({ works }: { works: Work[] }) {
 							<TableHead className="w-80 text-muted-foreground">
 								BRANCH
 							</TableHead>
-							<TableHead className="w-36 text-muted-foreground">
-								STARTED ↓
+							<TableHead
+								className="w-36 text-muted-foreground"
+								aria-sort={ariaSort(sort, "started")}
+							>
+								<SortButton
+									label="Started"
+									indicator={sortIndicator(sort, "started")}
+									onClick={() => changeSort("started")}
+								/>
 							</TableHead>
-							<TableHead className="w-24 text-muted-foreground">EXIT</TableHead>
+							<TableHead
+								className="w-24 text-muted-foreground"
+								aria-sort={ariaSort(sort, "exit")}
+							>
+								<SortButton
+									label="Exit"
+									indicator={sortIndicator(sort, "exit")}
+									onClick={() => changeSort("exit")}
+								/>
+							</TableHead>
 							<TableHead className="w-30 text-muted-foreground">
 								STATUS
 							</TableHead>

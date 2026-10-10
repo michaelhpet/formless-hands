@@ -319,7 +319,7 @@ export function ProjectTable({ projects }: { projects: Project[] }) {
 	return (
 		<div className="flex flex-col gap-3">
 			<div className="flex gap-2">
-				<InputGroup className="flex-1">
+				<InputGroup className="max-w-sm flex-1">
 					<InputGroupAddon>
 						<IconSearch />
 					</InputGroupAddon>
@@ -330,32 +330,37 @@ export function ProjectTable({ projects }: { projects: Project[] }) {
 						onChange={(event) => setQuery(event.target.value)}
 					/>
 				</InputGroup>
-				<ToggleGroup
-					variant="outline"
-					size="default"
-					spacing={0}
-					value={[filter]}
-					onValueChange={(value) => {
-						const next = value[0] as StatusFilter | undefined;
-						if (next) {
-							setFilter(next);
-						}
-					}}
-					aria-label="Filter by status"
-				>
-					<ToggleGroupItem value="all" aria-label="Show all projects">
-						All
-					</ToggleGroupItem>
-					<ToggleGroupItem
-						value="connected"
-						aria-label="Show connected projects"
+				<div className="ml-auto flex gap-2">
+					<ToggleGroup
+						variant="outline"
+						size="default"
+						spacing={0}
+						value={[filter]}
+						onValueChange={(value) => {
+							const next = value[0] as StatusFilter | undefined;
+							if (next) {
+								setFilter(next);
+							}
+						}}
+						aria-label="Filter by status"
 					>
-						Connected
-					</ToggleGroupItem>
-					<ToggleGroupItem value="error" aria-label="Show projects with errors">
-						Error
-					</ToggleGroupItem>
-				</ToggleGroup>
+						<ToggleGroupItem value="all" aria-label="Show all projects">
+							All
+						</ToggleGroupItem>
+						<ToggleGroupItem
+							value="connected"
+							aria-label="Show connected projects"
+						>
+							Connected
+						</ToggleGroupItem>
+						<ToggleGroupItem
+							value="error"
+							aria-label="Show projects with errors"
+						>
+							Error
+						</ToggleGroupItem>
+					</ToggleGroup>
+				</div>
 			</div>
 
 			{visible.length === 0 ? (

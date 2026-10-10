@@ -69,7 +69,7 @@ const TASK_STATUSES: TaskStatus[] = [
 ];
 
 const WORK_STATUSES: WorkStatus[] = ["running", "success", "failed"];
-const WORK_SORTS: WorkSort[] = ["started", "duration", "exit"];
+const WORK_SORTS: WorkSort[] = ["started", "-started", "exit", "-exit"];
 
 import { SettingsPage } from "./pages/settings";
 

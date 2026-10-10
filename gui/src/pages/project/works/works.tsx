@@ -34,14 +34,13 @@ import { useDebounce } from "@/hooks/use-debounce";
 import type { WorksSearch } from "@/router";
 import { NewWorkDialog, type NewWorkInput } from "./new-work-dialog";
 import {
+	DEFAULT_SORT,
 	INITIAL_WORKS,
-	SORT_LABELS,
 	STATUS_FILTERS,
 	STATUS_LABELS,
 	sortWorks,
 	summarizeWorks,
 	type Work,
-	type WorkSort,
 	type WorkStatusFilter,
 } from "./works-data";
 import { WorksTableView } from "./works-table-view";
@@ -78,7 +77,7 @@ export function WorksPage() {
 	const search = useSearch({ from: "/$projectId/works" });
 	const query = search.q ?? "";
 	const status: WorkStatusFilter = search.status ?? "all";
-	const sort: WorkSort = search.sort ?? "started";
+	const sort = search.sort ?? DEFAULT_SORT;
 	const worktree = search.worktree ?? "all";
 
 	const updateSearch = (patch: Partial<WorksSearch>) => {
@@ -96,9 +95,6 @@ export function WorksPage() {
 			status: value === "all" ? undefined : value,
 			page: undefined,
 		});
-	};
-	const setSort = (value: WorkSort) => {
-		updateSearch({ sort: value === "started" ? undefined : value });
 	};
 	const setWorktree = (value: string) => {
 		updateSearch({
@@ -226,7 +222,7 @@ export function WorksPage() {
 			</div>
 
 			<div className="flex gap-2">
-				<InputGroup className="flex-1">
+				<InputGroup className="max-w-sm flex-1">
 					<InputGroupAddon>
 						<IconSearch />
 					</InputGroupAddon>
@@ -237,40 +233,27 @@ export function WorksPage() {
 						onChange={(event) => setQuery(event.target.value)}
 					/>
 				</InputGroup>
-				<ToggleGroup
-					variant="outline"
-					size="default"
-					spacing={0}
-					value={[status]}
-					onValueChange={(value) => {
-						const next = value[0] as WorkStatusFilter | undefined;
-						if (next) {
-							setStatus(next);
-						}
-					}}
-					aria-label="Filter by status"
-				>
-					{STATUS_FILTERS.map((option) => (
-						<ToggleGroupItem key={option} value={option}>
-							{STATUS_LABELS[option]}
-						</ToggleGroupItem>
-					))}
-				</ToggleGroup>
-				<Select
-					value={sort}
-					onValueChange={(value) => setSort(value as WorkSort)}
-				>
-					<SelectTrigger aria-label="Sort works">
-						<SelectValue />
-					</SelectTrigger>
-					<SelectContent>
-						{(Object.keys(SORT_LABELS) as WorkSort[]).map((option) => (
-							<SelectItem key={option} value={option}>
-								{SORT_LABELS[option]}
-							</SelectItem>
+				<div className="ml-auto flex gap-2">
+					<ToggleGroup
+						variant="outline"
+						size="default"
+						spacing={0}
+						value={[status]}
+						onValueChange={(value) => {
+							const next = value[0] as WorkStatusFilter | undefined;
+							if (next) {
+								setStatus(next);
+							}
+						}}
+						aria-label="Filter by status"
+					>
+						{STATUS_FILTERS.map((option) => (
+							<ToggleGroupItem key={option} value={option}>
+								{STATUS_LABELS[option]}
+							</ToggleGroupItem>
 						))}
-					</SelectContent>
-				</Select>
+					</ToggleGroup>
+				</div>
 			</div>
 
 			{visible.length === 0 ? (

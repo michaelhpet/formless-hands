@@ -15,7 +15,11 @@ export interface Work {
 
 export type WorkStatusFilter = "all" | WorkStatus;
 
-export type WorkSort = "started" | "duration" | "exit";
+export type WorkSortKey = "started" | "exit";
+
+export type WorkSort = "started" | "-started" | "exit" | "-exit";
+
+export const DEFAULT_SORT: WorkSort = "started";
 
 export const STATUS_FILTERS: WorkStatusFilter[] = [
 	"all",
@@ -31,11 +35,35 @@ export const STATUS_LABELS: Record<WorkStatusFilter, string> = {
 	failed: "Failed",
 };
 
-export const SORT_LABELS: Record<WorkSort, string> = {
-	started: "Started ↓",
-	duration: "Duration ↓",
-	exit: "Exit ↓",
-};
+export function toggleSort(current: WorkSort, key: WorkSortKey): WorkSort {
+	if (current === key) {
+		return `-${key}` as WorkSort;
+	}
+	return key;
+}
+
+export function sortIndicator(sort: WorkSort, key: WorkSortKey): string {
+	if (sort === key) {
+		return "↓";
+	}
+	if (sort === `-${key}`) {
+		return "↑";
+	}
+	return "";
+}
+
+export function ariaSort(
+	sort: WorkSort,
+	key: WorkSortKey,
+): "ascending" | "descending" | "none" {
+	if (sort === key) {
+		return "descending";
+	}
+	if (sort === `-${key}`) {
+		return "ascending";
+	}
+	return "none";
+}
 
 export const INITIAL_WORKS: Work[] = [
 	{
@@ -161,14 +189,17 @@ export const INITIAL_WORKS: Work[] = [
 ];
 
 export function sortWorks(works: Work[], sort: WorkSort): Work[] {
+	const descending = !sort.startsWith("-");
+	const key = (descending ? sort : sort.slice(1)) as WorkSortKey;
+	const direction = descending ? 1 : -1;
 	return [...works].sort((a, b) => {
-		switch (sort) {
-			case "duration":
-				return b.durationMin - a.durationMin || b.id - a.id;
+		switch (key) {
 			case "exit":
-				return (b.exitCode ?? -1) - (a.exitCode ?? -1) || b.id - a.id;
+				return (
+					((b.exitCode ?? -1) - (a.exitCode ?? -1)) * direction || b.id - a.id
+				);
 			default:
-				return b.id - a.id;
+				return (b.id - a.id) * direction;
 		}
 	});
 }

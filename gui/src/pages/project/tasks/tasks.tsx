@@ -216,7 +216,7 @@ export function TasksPage() {
 			</div>
 
 			<div className="flex gap-2">
-				<InputGroup className="flex-1">
+				<InputGroup className="max-w-sm flex-1">
 					<InputGroupAddon>
 						<IconSearch />
 					</InputGroupAddon>
@@ -227,42 +227,44 @@ export function TasksPage() {
 						onChange={(event) => setQuery(event.target.value)}
 					/>
 				</InputGroup>
-				<Select
-					value={status}
-					onValueChange={(value) => setStatus(value as StatusFilter)}
-					items={STATUS_LABELS}
-				>
-					<SelectTrigger aria-label="Filter by status">
-						<SelectValue />
-					</SelectTrigger>
-					<SelectContent>
-						{STATUS_FILTERS.map((option) => (
-							<SelectItem key={option} value={option}>
-								{STATUS_LABELS[option]}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
-				<ToggleGroup
-					variant="outline"
-					size="default"
-					spacing={0}
-					value={[view]}
-					onValueChange={(value) => {
-						const next = value[0] as View | undefined;
-						if (next) {
-							setView(next);
-						}
-					}}
-					aria-label="Switch view"
-				>
-					<ToggleGroupItem value="kanban" aria-label="Show kanban view">
-						Kanban
-					</ToggleGroupItem>
-					<ToggleGroupItem value="table" aria-label="Show table view">
-						Table
-					</ToggleGroupItem>
-				</ToggleGroup>
+				<div className="ml-auto flex gap-2">
+					<Select
+						value={status}
+						onValueChange={(value) => setStatus(value as StatusFilter)}
+						items={STATUS_LABELS}
+					>
+						<SelectTrigger aria-label="Filter by status">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							{STATUS_FILTERS.map((option) => (
+								<SelectItem key={option} value={option}>
+									{STATUS_LABELS[option]}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+					<ToggleGroup
+						variant="outline"
+						size="default"
+						spacing={0}
+						value={[view]}
+						onValueChange={(value) => {
+							const next = value[0] as View | undefined;
+							if (next) {
+								setView(next);
+							}
+						}}
+						aria-label="Switch view"
+					>
+						<ToggleGroupItem value="kanban" aria-label="Show kanban view">
+							Kanban
+						</ToggleGroupItem>
+						<ToggleGroupItem value="table" aria-label="Show table view">
+							Table
+						</ToggleGroupItem>
+					</ToggleGroup>
+				</div>
 			</div>
 
 			{visible.length === 0 ? (
