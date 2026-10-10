@@ -5,10 +5,8 @@ import {
 	IconDotsVertical,
 } from "@tabler/icons-react";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { useState } from "react";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -85,15 +83,7 @@ function WorkRowMenu({ work }: { work: Work }) {
 	);
 }
 
-function WorkTableRow({
-	work,
-	selected,
-	onToggle,
-}: {
-	work: Work;
-	selected: boolean;
-	onToggle: () => void;
-}) {
+function WorkTableRow({ work }: { work: Work }) {
 	const { projectId } = useParams({ strict: false });
 	const navigate = useNavigate();
 	const openDetail = () => {
@@ -105,7 +95,6 @@ function WorkTableRow({
 	return (
 		<TableRow
 			tabIndex={0}
-			data-state={selected ? "selected" : undefined}
 			className="cursor-pointer divide-x divide-border"
 			onClick={openDetail}
 			onKeyDown={(event) => {
@@ -115,17 +104,6 @@ function WorkTableRow({
 				}
 			}}
 		>
-			<TableCell
-				className="w-10"
-				onClick={(event) => event.stopPropagation()}
-				onKeyDown={(event) => event.stopPropagation()}
-			>
-				<Checkbox
-					aria-label={`Select work #${work.id}`}
-					checked={selected}
-					onCheckedChange={onToggle}
-				/>
-			</TableCell>
 			<TableCell className="w-20 font-bold text-foreground">
 				#{work.id}
 			</TableCell>
@@ -198,14 +176,10 @@ export function WorksTableView({ works }: { works: Work[] }) {
 			replace: true,
 		});
 	};
-	const [selected, setSelected] = useState<Set<number>>(new Set());
-
 	const pageCount = Math.max(1, Math.ceil(works.length / PAGE_SIZE));
 	const currentPage = Math.min(page, pageCount);
 	const start = (currentPage - 1) * PAGE_SIZE;
 	const pageItems = works.slice(start, start + PAGE_SIZE);
-	const pageSelected =
-		pageItems.length > 0 && pageItems.every((work) => selected.has(work.id));
 
 	const goToPage = (next: number) => {
 		const clamped = Math.min(Math.max(1, next), pageCount);
@@ -219,47 +193,12 @@ export function WorksTableView({ works }: { works: Work[] }) {
 		});
 	};
 
-	const toggle = (id: number) => {
-		setSelected((prev) => {
-			const next = new Set(prev);
-			if (next.has(id)) {
-				next.delete(id);
-			} else {
-				next.add(id);
-			}
-			return next;
-		});
-	};
-
-	const togglePage = () => {
-		setSelected((prev) => {
-			const next = new Set(prev);
-			if (pageSelected) {
-				for (const work of pageItems) {
-					next.delete(work.id);
-				}
-			} else {
-				for (const work of pageItems) {
-					next.add(work.id);
-				}
-			}
-			return next;
-		});
-	};
-
 	return (
 		<div className="flex flex-col gap-3">
 			<div className="border">
 				<Table>
 					<TableHeader>
 						<TableRow className="divide-x divide-border hover:bg-transparent">
-							<TableHead className="w-10">
-								<Checkbox
-									aria-label="Select page"
-									checked={pageSelected}
-									onCheckedChange={togglePage}
-								/>
-							</TableHead>
 							<TableHead
 								className="w-20 text-muted-foreground"
 								aria-sort={ariaSort(sort, "started")}
@@ -306,12 +245,7 @@ export function WorksTableView({ works }: { works: Work[] }) {
 					</TableHeader>
 					<TableBody>
 						{pageItems.map((work) => (
-							<WorkTableRow
-								key={work.id}
-								work={work}
-								selected={selected.has(work.id)}
-								onToggle={() => toggle(work.id)}
-							/>
+							<WorkTableRow key={work.id} work={work} />
 						))}
 					</TableBody>
 				</Table>
@@ -321,7 +255,6 @@ export function WorksTableView({ works }: { works: Work[] }) {
 					{works.length === 0
 						? "0 works"
 						: `${start + 1} to ${start + pageItems.length} of ${works.length}`}
-					{selected.size > 0 ? ` · ${selected.size} selected` : ""}
 					{" · Logs stream with tail -f · click a row for work detail"}
 				</p>
 				{pageCount > 1 ? (
