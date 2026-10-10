@@ -20,7 +20,7 @@ const STATUS_MARK: Record<TaskStatus, { glyph: string; className: string }> = {
 	open: { glyph: "○", className: "text-muted-foreground" },
 	triaged: { glyph: "●", className: "text-foreground" },
 	"in-progress": { glyph: "●", className: "text-warning" },
-	"dev-complete": { glyph: "●", className: "text-warning" },
+	completed: { glyph: "●", className: "text-foreground" },
 	"in-review": { glyph: "●", className: "text-foreground" },
 	merged: { glyph: "●", className: "text-success" },
 	closed: { glyph: "●", className: "text-muted-foreground" },

@@ -1,3 +1,4 @@
+import { useNavigate, useParams } from "@tanstack/react-router";
 import { cn } from "cn";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,16 +14,38 @@ const COUNT_STYLES: Record<KanbanColumnKey, string | undefined> = {
 	"needs-triage": undefined,
 	ready: undefined,
 	"in-progress": "text-warning",
-	"in-review": undefined,
+	completed: undefined,
 	done: "text-success",
 };
 
 function TaskCard({ task }: { task: Task }) {
+	const { projectId } = useParams({ strict: false });
+	const navigate = useNavigate();
 	const done = task.status === "merged" || task.status === "closed";
+	const openDetail = () => {
+		navigate({
+			to: "/project/$projectId/tasks/$taskId",
+			params: { projectId: projectId ?? "", taskId: task.id },
+		});
+	};
 	return (
 		<Card
 			size="sm"
-			className={cn(accentBorderClass(task.status), done && "opacity-70")}
+			tabIndex={0}
+			role="link"
+			aria-label={`${task.id}: ${task.title}`}
+			onClick={openDetail}
+			onKeyDown={(event) => {
+				if (event.key === "Enter" || event.key === " ") {
+					event.preventDefault();
+					openDetail();
+				}
+			}}
+			className={cn(
+				accentBorderClass(task.status),
+				done && "opacity-70",
+				"cursor-pointer hover:border-ring",
+			)}
 		>
 			<CardContent className="flex flex-col gap-1.5">
 				<div className="flex items-center justify-between">

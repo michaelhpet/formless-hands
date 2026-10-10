@@ -2,7 +2,7 @@ export type TaskStatus =
 	| "open"
 	| "triaged"
 	| "in-progress"
-	| "dev-complete"
+	| "completed"
 	| "in-review"
 	| "merged"
 	| "closed"
@@ -26,7 +26,7 @@ export type KanbanColumnKey =
 	| "needs-triage"
 	| "ready"
 	| "in-progress"
-	| "in-review"
+	| "completed"
 	| "done";
 
 export const KANBAN_COLUMNS: {
@@ -43,9 +43,13 @@ export const KANBAN_COLUMNS: {
 	{
 		key: "in-progress",
 		title: "IN PROGRESS",
-		statuses: ["in-progress", "dev-complete"],
+		statuses: ["in-progress"],
 	},
-	{ key: "in-review", title: "IN REVIEW", statuses: ["in-review"] },
+	{
+		key: "completed",
+		title: "COMPLETED",
+		statuses: ["completed", "in-review"],
+	},
 	{ key: "done", title: "DONE", statuses: ["merged", "closed"] },
 ];
 
@@ -54,7 +58,7 @@ export const STATUS_FILTERS: ("all" | TaskStatus)[] = [
 	"open",
 	"triaged",
 	"in-progress",
-	"dev-complete",
+	"completed",
 	"in-review",
 	"blocked",
 	"needs-context",
@@ -73,7 +77,7 @@ export const STATUS_LABELS: Record<"all" | TaskStatus, string> = {
 	open: "Open",
 	triaged: "Triaged",
 	"in-progress": "In progress",
-	"dev-complete": "Dev complete",
+	completed: "Completed",
 	"in-review": "In review",
 	blocked: "Blocked",
 	"needs-context": "Needs context",
@@ -133,9 +137,9 @@ export const INITIAL_TASKS: Task[] = [
 		id: "GH-881",
 		source: "github",
 		title: "Implement task table for GUI",
-		status: "dev-complete",
+		status: "completed",
 		priority: 1,
-		meta: "wt-gui-table · dev-complete · 28m",
+		meta: "wt-gui-table · completed · 28m",
 		ref: "wt-gui-table · try 1",
 		age: "28m",
 	},
@@ -233,7 +237,8 @@ export interface TaskStats {
 	needsTriage: number;
 	ready: number;
 	inProgress: number;
-	inReview: number;
+	completed: number;
+	done: number;
 	blocked: number;
 	open: number;
 }
@@ -247,8 +252,9 @@ export function summarizeTasks(tasks: Task[]): TaskStats {
 	return {
 		needsTriage: count(["open", "needs-context"]),
 		ready: count(["triaged"]),
-		inProgress: count(["in-progress", "dev-complete"]),
-		inReview: count(["in-review"]),
+		inProgress: count(["in-progress"]),
+		completed: count(["completed", "in-review"]),
+		done: count(["merged", "closed"]),
 		blocked: count(["blocked"]),
 		open,
 	};

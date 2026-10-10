@@ -1,4 +1,5 @@
 import { IconCopy, IconDotsVertical } from "@tabler/icons-react";
+import { useNavigate, useParams } from "@tanstack/react-router";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -68,6 +69,61 @@ function TaskRowMenu({ task }: { task: Task }) {
 	);
 }
 
+function TaskTableRow({ task }: { task: Task }) {
+	const { projectId } = useParams({ strict: false });
+	const navigate = useNavigate();
+	const openDetail = () => {
+		navigate({
+			to: "/project/$projectId/tasks/$taskId",
+			params: { projectId: projectId ?? "", taskId: task.id },
+		});
+	};
+	return (
+		<TableRow
+			tabIndex={0}
+			className="cursor-pointer divide-x divide-border"
+			onClick={openDetail}
+			onKeyDown={(event) => {
+				if (event.key === "Enter" || event.key === " ") {
+					event.preventDefault();
+					openDetail();
+				}
+			}}
+		>
+			<TableCell>
+				<span className="flex flex-col gap-0.5">
+					<span className="text-muted-foreground">{task.id}</span>
+					<span className="text-[13px] text-foreground">{task.title}</span>
+				</span>
+			</TableCell>
+			<TableCell>
+				<TaskStatusMark status={task.status} />
+			</TableCell>
+			<TableCell>
+				<span className="flex items-center gap-1.5 text-foreground">
+					<span
+						className="size-1.5 rounded-full bg-foreground"
+						aria-hidden="true"
+					/>
+					{task.source}
+				</span>
+			</TableCell>
+			<TableCell>
+				<PriorityLabel priority={task.priority} />
+			</TableCell>
+			<TableCell className="text-muted-foreground">{task.ref}</TableCell>
+			<TableCell className="text-muted-foreground">{task.age}</TableCell>
+			<TableCell
+				className="text-center"
+				onClick={(event) => event.stopPropagation()}
+				onKeyDown={(event) => event.stopPropagation()}
+			>
+				<TaskRowMenu task={task} />
+			</TableCell>
+		</TableRow>
+	);
+}
+
 export function TasksTableView({ tasks }: { tasks: Task[] }) {
 	const [page, setPage] = useState(1);
 
@@ -105,44 +161,7 @@ export function TasksTableView({ tasks }: { tasks: Task[] }) {
 					</TableHeader>
 					<TableBody>
 						{pageItems.map((task) => (
-							<TableRow key={task.id} className="divide-x divide-border">
-								<TableCell>
-									<span className="flex flex-col gap-0.5">
-										<span className="text-muted-foreground">{task.id}</span>
-										<span className="text-[13px] text-foreground">
-											{task.title}
-										</span>
-									</span>
-								</TableCell>
-								<TableCell>
-									<TaskStatusMark status={task.status} />
-								</TableCell>
-								<TableCell>
-									<span className="flex items-center gap-1.5 text-foreground">
-										<span
-											className="size-1.5 rounded-full bg-foreground"
-											aria-hidden="true"
-										/>
-										{task.source}
-									</span>
-								</TableCell>
-								<TableCell>
-									<PriorityLabel priority={task.priority} />
-								</TableCell>
-								<TableCell className="text-muted-foreground">
-									{task.ref}
-								</TableCell>
-								<TableCell className="text-muted-foreground">
-									{task.age}
-								</TableCell>
-								<TableCell
-									className="text-center"
-									onClick={(event) => event.stopPropagation()}
-									onKeyDown={(event) => event.stopPropagation()}
-								>
-									<TaskRowMenu task={task} />
-								</TableCell>
-							</TableRow>
+							<TaskTableRow key={task.id} task={task} />
 						))}
 					</TableBody>
 				</Table>

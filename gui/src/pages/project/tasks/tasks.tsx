@@ -169,15 +169,15 @@ export function TasksPage() {
 					valueClassName="text-warning"
 				/>
 				<StatCard
-					label="IN REVIEW"
-					value={stats.inReview}
-					sub={`${stats.inReview} PRs open`}
+					label="COMPLETED"
+					value={stats.completed}
+					sub={`${stats.completed} awaiting review`}
 				/>
 				<StatCard
-					label="BLOCKED"
-					value={stats.blocked}
-					sub="needs attention"
-					valueClassName="text-destructive"
+					label="DONE"
+					value={stats.done}
+					sub={`${stats.done} approved`}
+					valueClassName="text-success"
 				/>
 			</div>
 

@@ -88,7 +88,7 @@ pub mod status {
     pub const OPEN: &str = "open";
     pub const TRIAGED: &str = "triaged";
     pub const IN_PROGRESS: &str = "in-progress";
-    pub const DEV_COMPLETE: &str = "dev-complete";
+    pub const COMPLETED: &str = "completed";
     pub const IN_REVIEW: &str = "in-review";
     pub const MERGED: &str = "merged";
     pub const CLOSED: &str = "closed";
@@ -99,7 +99,7 @@ pub mod status {
         OPEN,
         TRIAGED,
         IN_PROGRESS,
-        DEV_COMPLETE,
+        COMPLETED,
         IN_REVIEW,
         MERGED,
         CLOSED,
