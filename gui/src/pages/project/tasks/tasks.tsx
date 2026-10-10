@@ -63,11 +63,11 @@ function StatCard({
 	valueClassName?: string;
 }) {
 	return (
-		<Card>
+		<Card size="sm">
 			<CardHeader>
 				<CardDescription>{label}</CardDescription>
 			</CardHeader>
-			<CardContent className="flex flex-col gap-1.5">
+			<CardContent className="flex flex-col gap-1">
 				<div className={cn("text-[26px] leading-8 font-bold", valueClassName)}>
 					{value}
 				</div>
