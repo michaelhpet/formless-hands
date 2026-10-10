@@ -1,7 +1,7 @@
 import { RouterProvider } from "@tanstack/react-router";
-import { router } from "./router";
+import { router, routerRemountKey } from "./router";
 import "./index.css";
 
 export const App = () => {
-	return <RouterProvider router={router} />;
+	return <RouterProvider key={routerRemountKey()} router={router} />;
 };

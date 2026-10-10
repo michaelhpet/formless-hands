@@ -97,3 +97,14 @@ declare module "@tanstack/react-router" {
 		router: typeof router;
 	}
 }
+
+const routerRemountKeys = new WeakMap<object, string>();
+
+export function routerRemountKey(): string {
+	let key = routerRemountKeys.get(router);
+	if (!key) {
+		key = Math.random().toString(36).slice(2);
+		routerRemountKeys.set(router, key);
+	}
+	return key;
+}
