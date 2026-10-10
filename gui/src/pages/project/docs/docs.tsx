@@ -1,4 +1,4 @@
-import { IconArrowRight } from "@tabler/icons-react";
+import { IconArrowLeft, IconArrowRight } from "@tabler/icons-react";
 import { useParams } from "@tanstack/react-router";
 import { cn } from "cn";
 import { useRef, useState } from "react";
@@ -15,12 +15,12 @@ import {
 function Section({
 	title,
 	active,
-	onOpen,
+	onToggle,
 	children,
 }: {
 	title: string;
 	active: boolean;
-	onOpen: () => void;
+	onToggle: () => void;
 	children: React.ReactNode;
 }) {
 	return (
@@ -30,11 +30,13 @@ function Section({
 				<Button
 					variant="ghost"
 					size="icon-sm"
-					onClick={onOpen}
+					onClick={onToggle}
 					aria-expanded={active}
-					aria-label={`Open ${title} deep dive`}
+					aria-label={
+						active ? `Close ${title} deep dive` : `Open ${title} deep dive`
+					}
 				>
-					<IconArrowRight />
+					{active ? <IconArrowLeft /> : <IconArrowRight />}
 				</Button>
 			</div>
 			{children}
@@ -81,60 +83,74 @@ export function DocsPage() {
 
 	const openDive = (key: DeepDiveKey) => {
 		setDeepDive(key);
-		panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+		if (key !== deepDive) {
+			panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+		}
+	};
+
+	const toggleDive = (key: DeepDiveKey) => {
+		if (deepDive === key) {
+			setDeepDive(null);
+		} else {
+			openDive(key);
+		}
 	};
 
 	return (
 		<div className="flex w-full flex-1 flex-col gap-3 px-5 py-4">
-			<div className="flex w-full max-w-275 flex-col gap-2.5 px-0.5 py-1">
-				<div className="flex items-center justify-between px-0.5 py-1">
-					<h1 className="tracking-wide text-muted-foreground">OVERVIEW</h1>
-					<div className="flex items-center gap-2">
-						<span className="text-muted-foreground">{freshness}</span>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={regenerate}
-							disabled={regenerating}
-						>
-							{regenerating ? "Regenerating…" : "Regenerate"}
-						</Button>
-					</div>
-				</div>
-				<p className="text-[15px] leading-5.5 font-bold text-foreground">
-					formless-hands turns Linear and GitHub issues into merged code with
-					almost no human typing.
-				</p>
-				<p className="text-[13px] leading-5.25 text-foreground">
-					A daemon polls task sources on a cron, triages what it finds, and
-					hands work to opencode agents running in isolated git worktrees. Every
-					attempt is a recorded work with a transcript; reviews gate the merge.
-					The GUI and API are served by the same binary over SQLite — one file
-					holds projects, sources, tasks, works, and reviews.
-				</p>
-				<div className="flex flex-wrap items-center gap-2">
-					<span className="text-muted-foreground">Scenarios →</span>
-					{[
-						"Issue → merged PR",
-						"Blocked → human note → retry",
-						"New source → first poll",
-					].map((scenario) => (
-						<span key={scenario} className="border bg-background px-2.5 py-1">
-							{scenario}
-						</span>
-					))}
-				</div>
-				<p className="text-muted-foreground">
-					Refs → core/src/main.rs · core/src/db.rs · gui/src/router.tsx
-				</p>
-			</div>
-
 			<div className="flex w-full items-start gap-3 max-xl:flex-col">
-				<div className="flex min-w-0 flex-1 flex-col gap-3">
+				<div className="flex w-full min-w-0 max-w-3xl flex-1 flex-col gap-3">
+					<div className="flex w-full flex-col gap-2.5 px-0.5 py-1">
+						<div className="flex items-center justify-between px-0.5 py-1">
+							<h1 className="tracking-wide text-muted-foreground">OVERVIEW</h1>
+							<div className="flex items-center gap-2">
+								<span className="text-muted-foreground">{freshness}</span>
+								<Button
+									variant="outline"
+									size="sm"
+									onClick={regenerate}
+									disabled={regenerating}
+								>
+									{regenerating ? "Regenerating…" : "Regenerate"}
+								</Button>
+							</div>
+						</div>
+						<p className="text-[15px] leading-5.5 font-bold text-foreground">
+							formless-hands turns Linear and GitHub issues into merged code
+							with almost no human typing.
+						</p>
+						<p className="text-[13px] leading-5.25 text-foreground">
+							A daemon polls task sources on a cron, triages what it finds, and
+							hands work to opencode agents running in isolated git worktrees.
+							Every attempt is a recorded work with a transcript; reviews gate
+							the merge. The GUI and API are served by the same binary over
+							SQLite — one file holds projects, sources, tasks, works, and
+							reviews.
+						</p>
+						<div className="flex flex-wrap items-center gap-2">
+							<span className="text-muted-foreground">Scenarios →</span>
+							{[
+								"Issue → merged PR",
+								"Blocked → human note → retry",
+								"New source → first poll",
+							].map((scenario) => (
+								<span
+									key={scenario}
+									className="border bg-background px-2.5 py-1"
+								>
+									{scenario}
+								</span>
+							))}
+						</div>
+						<p className="text-muted-foreground">
+							Refs → core/src/main.rs · core/src/db.rs · gui/src/router.tsx
+						</p>
+					</div>
+
 					<Section
 						title="COMPONENTS · FLOWCHART"
 						active={deepDive === "components"}
-						onOpen={() => openDive("components")}
+						onToggle={() => toggleDive("components")}
 					>
 						<SectionBody
 							description="Five pieces, one binary. The daemon owns the loop; the GUI is a thin view over the same SQLite file the daemon writes. Node size follows lines of code — the daemon node dominates because the loop, worker, and review logic all live in core. A red halo would mark a dependency cycle; there are none."
@@ -147,7 +163,7 @@ export function DocsPage() {
 					<Section
 						title="DATA MODEL · ER DIAGRAM"
 						active={deepDive === "data-model"}
-						onOpen={() => openDive("data-model")}
+						onToggle={() => toggleDive("data-model")}
 					>
 						<SectionBody
 							description="The whole system is five tables. Everything hangs off tasks: sources feed them, works execute them, reviews discuss them. Foreign keys enforce ownership — a work or review cannot exist without its task. Counts are live; the schema is the contract agents code against."
@@ -160,7 +176,7 @@ export function DocsPage() {
 					<Section
 						title="RUNTIME · SEQUENCE · EXEMPLAR WORK #128"
 						active={deepDive === "runtime"}
-						onOpen={() => openDive("runtime")}
+						onToggle={() => toggleDive("runtime")}
 					>
 						<SectionBody
 							description="One issue's journey through the loop, with real timestamps from work #128. The dotted return from the forge is the only async edge — review comments arrive on their own schedule and can send a work back. Green path to closed is the common case; red here cost one extra attempt."
@@ -173,7 +189,7 @@ export function DocsPage() {
 					<Section
 						title="HEALTH · LEAD TIME + HOTSPOTS"
 						active={deepDive === "health"}
-						onOpen={() => openDive("health")}
+						onToggle={() => toggleDive("health")}
 					>
 						<SectionBody
 							description="Lead time is falling as backoff fixes land — Thursday's median is a quarter of Tuesday's. Anything in the top-right of churn × complexity (currently poller.rs) gets mandatory human review before merge, no matter how green the tests are."
@@ -219,7 +235,7 @@ export function DocsPage() {
 					<Section
 						title="DECISIONS · ADRS · 2 THIS WEEK"
 						active={deepDive === "decisions"}
-						onOpen={() => openDive("decisions")}
+						onToggle={() => toggleDive("decisions")}
 					>
 						<div className="flex flex-col gap-2.5 p-3.5">
 							<div className="flex flex-col gap-1.5 border-l-2 border-l-success bg-background px-3 py-2.5">
