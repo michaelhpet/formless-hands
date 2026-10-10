@@ -104,10 +104,10 @@ export const STATUS_LABELS: Record<"all" | TaskStatus, string> = {
 };
 
 export const PRIORITY_LABELS: Record<string, string> = {
-	"0": "P0 — Urgent",
-	"1": "P1 — High",
-	"2": "P2 — Normal",
-	"3": "P3 — Low",
+	"0": "P0: Urgent",
+	"1": "P1: High",
+	"2": "P2: Normal",
+	"3": "P3: Low",
 };
 
 export const INITIAL_TASKS: Task[] = [
@@ -118,7 +118,7 @@ export const INITIAL_TASKS: Task[] = [
 		status: "blocked",
 		priority: 0,
 		meta: "Blocked · waiting 4d",
-		ref: "—",
+		ref: "None",
 		age: "4d",
 	},
 	{
@@ -128,7 +128,7 @@ export const INITIAL_TASKS: Task[] = [
 		status: "open",
 		priority: 1,
 		meta: "Open · 6d old",
-		ref: "—",
+		ref: "None",
 		age: "6d",
 	},
 	{
@@ -138,7 +138,7 @@ export const INITIAL_TASKS: Task[] = [
 		status: "triaged",
 		priority: 1,
 		meta: "Triaged · instructions set",
-		ref: "—",
+		ref: "None",
 		age: "3d",
 	},
 	{
@@ -168,7 +168,7 @@ export const INITIAL_TASKS: Task[] = [
 		status: "needs-context",
 		priority: 2,
 		meta: "Needs context · no body",
-		ref: "—",
+		ref: "None",
 		age: "1d",
 	},
 	{
@@ -188,7 +188,7 @@ export const INITIAL_TASKS: Task[] = [
 		status: "triaged",
 		priority: 2,
 		meta: "Triaged · 1d old",
-		ref: "—",
+		ref: "None",
 		age: "1d",
 	},
 	{
@@ -208,7 +208,7 @@ export const INITIAL_TASKS: Task[] = [
 		status: "open",
 		priority: 3,
 		meta: "Open · 2d old",
-		ref: "—",
+		ref: "None",
 		age: "2d",
 	},
 	{
@@ -228,7 +228,7 @@ export const INITIAL_TASKS: Task[] = [
 		status: "closed",
 		priority: 3,
 		meta: "Closed · no PR",
-		ref: "—",
+		ref: "None",
 		age: "5d",
 	},
 ];

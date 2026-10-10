@@ -78,10 +78,10 @@ export function ComponentsDiagram() {
 				core · daemon
 			</text>
 			<text x="490" y="126" textAnchor="middle" fontSize="10" fill="#A1A1AA">
-				poll → triage → work
+				poll, triage, work
 			</text>
 			<text x="490" y="142" textAnchor="middle" fontSize="10" fill="#A1A1AA">
-				→ review → merge
+				review, merge
 			</text>
 			<text x="490" y="160" textAnchor="middle" fontSize="10" fill="#A1A1AA">
 				11 modules · main.rs
@@ -231,7 +231,7 @@ export function ErDiagram() {
 					PROJECTS · 6
 				</text>
 				<text x="32" y="62" fontSize="11" fill="#FAFAFA">
-					id ∗PK
+					id *PK
 				</text>
 				<text x="32" y="79" fontSize="11" fill="#A1A1AA">
 					name · remote_url
@@ -257,7 +257,7 @@ export function ErDiagram() {
 					TASK_SOURCES · 4
 				</text>
 				<text x="368" y="62" fontSize="11" fill="#FAFAFA">
-					id ∗PK
+					id *PK
 				</text>
 				<text x="368" y="79" fontSize="11" fill="#A1A1AA">
 					kind · linear|github
@@ -283,7 +283,7 @@ export function ErDiagram() {
 					TASKS · 27
 				</text>
 				<text x="704" y="62" fontSize="11" fill="#FAFAFA">
-					id ∗PK
+					id *PK
 				</text>
 				<text x="704" y="79" fontSize="11" fill="#A1A1AA">
 					external_id · LIN-142
@@ -312,10 +312,10 @@ export function ErDiagram() {
 					WORKS · 128
 				</text>
 				<text x="368" y="232" fontSize="11" fill="#FAFAFA">
-					id ∗PK
+					id *PK
 				</text>
 				<text x="368" y="249" fontSize="11" fill="#22C55E">
-					task_id → tasks
+					task_id to tasks
 				</text>
 				<text x="368" y="266" fontSize="11" fill="#A1A1AA">
 					branch · exit_code
@@ -338,10 +338,10 @@ export function ErDiagram() {
 					REVIEW_COMMENTS · 3
 				</text>
 				<text x="704" y="232" fontSize="11" fill="#FAFAFA">
-					id ∗PK
+					id *PK
 				</text>
 				<text x="704" y="249" fontSize="11" fill="#22C55E">
-					task_id → tasks
+					task_id to tasks
 				</text>
 				<text x="704" y="266" fontSize="11" fill="#A1A1AA">
 					author · resolved
@@ -593,7 +593,7 @@ export function RuntimeDiagram() {
 				strokeWidth="1.5"
 			/>
 			<text x="420" y="262" fontSize="10" fill="#22C55E">
-				Merged → closed
+				Merged to closed
 			</text>
 		</svg>
 	);
@@ -629,12 +629,12 @@ export function HealthDiagram() {
 				</text>
 				<rect x="20" y="112" width="95" height="18" fill="#22C55E" />
 				<text x="121" y="126" fontSize="10" fill="#A1A1AA">
-					Thu · 12m ↓
+					Thu · 12m
 				</text>
 			</g>
 			<line x1="20" y1="142" x2="1012" y2="142" stroke="#262626" />
 			<text x="20" y="160" fontSize="10" fill="#FACC15">
-				Hotspot · src/poller.rs — 14 churn × high complexity
+				Hotspot · src/poller.rs — 14 churn x high complexity
 			</text>
 		</svg>
 	);

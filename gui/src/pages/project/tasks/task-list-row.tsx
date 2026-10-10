@@ -33,9 +33,7 @@ export function TaskListRow({ task }: { task: Task }) {
 			<span className="w-14 shrink-0 text-right text-muted-foreground">
 				{task.age}
 			</span>
-			<span aria-hidden="true" className="shrink-0 text-muted-foreground">
-				→
-			</span>
+			<span className="shrink-0 text-muted-foreground">Open</span>
 		</button>
 	);
 }

@@ -4,7 +4,6 @@ import { cn } from "cn";
 import { useEffect, useState } from "react";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { StatusBadge } from "@/components/status-badge";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -45,14 +44,14 @@ function TranscriptCard({
 				<h2 className="tracking-wide text-muted-foreground">
 					TRANSCRIPT · {logFile}
 				</h2>
-				<button
-					type="button"
+				<Button
+					variant="outline"
+					size="sm"
 					onClick={() => setAutoscroll((prev) => !prev)}
-					className="text-warning hover:underline hover:underline-offset-4"
 					aria-pressed={autoscroll}
 				>
 					Autoscroll {autoscroll ? "on" : "off"}
-				</button>
+				</Button>
 			</div>
 			<div className="flex flex-col gap-1.5 p-3.5">
 				{lines.map((line) => (
@@ -63,11 +62,16 @@ function TranscriptCard({
 						{line.time} {line.text}
 					</p>
 				))}
-				{live ? <span className="text-[12px] text-warning">▊</span> : null}
+				{live ? (
+					<span
+						aria-hidden="true"
+						className="inline-block h-3.5 w-2 animate-pulse bg-warning"
+					/>
+				) : null}
 			</div>
 			<p className="border-t px-3.5 py-2.5 text-muted-foreground">
-				{live ? "Streaming" : "Finished"} · {lines.length} lines · exit{" "}
-				{exitCode === null ? "—" : exitCode}
+				{live ? "Streaming" : "Finished"} · {lines.length} lines ·{" "}
+				{exitCode === null ? "No exit yet" : `Exit ${exitCode}`}
 			</p>
 		</Card>
 	);
@@ -96,7 +100,7 @@ export function WorkDetailPage() {
 						</EmptyMedia>
 						<EmptyTitle>Work not found</EmptyTitle>
 						<EmptyDescription>
-							No work with id “{workId}” in this project.
+							No work with id "{workId}" in this project.
 						</EmptyDescription>
 					</EmptyHeader>
 					<EmptyContent>
@@ -180,20 +184,10 @@ export function WorkDetailPage() {
 							#{detail.id} — {detail.taskTitle}
 						</h1>
 						<p className="text-muted-foreground">
-							{detail.taskRef} · {detail.branch} · started {detail.started} ·{" "}
-							{detail.agent}
+							Started {detail.started} · {detail.agent}
 						</p>
 					</div>
 					<div className="flex shrink-0 flex-wrap items-center gap-2">
-						{live ? (
-							<Badge variant="outline" className="gap-1.5 px-3 py-1.5">
-								<span
-									className="size-1.5 rounded-full bg-warning"
-									aria-hidden="true"
-								/>
-								<span className="text-warning">Live · tail -f</span>
-							</Badge>
-						) : null}
 						{live ? (
 							<Button variant="outline" onClick={cancel}>
 								Cancel
@@ -228,7 +222,7 @@ export function WorkDetailPage() {
 										}}
 										className="text-muted-foreground hover:text-foreground hover:underline hover:underline-offset-4"
 									>
-										Open task →
+										Open task
 									</Link>
 								) : null}
 							</div>
@@ -260,9 +254,9 @@ export function WorkDetailPage() {
 									["Worktree", detail.worktree],
 									["Agent", detail.agent],
 									["Started", `${detail.started} · ${detail.duration} ago`],
-									["Finished", live ? "—" : detail.started],
+									["Finished", live ? "Not yet" : detail.started],
 									["Duration", detail.duration],
-									["Exit", detail.exitCode === null ? "—" : detail.exitCode],
+									["Exit", detail.exitCode === null ? "None" : detail.exitCode],
 									["Attempt", `${detail.attempt} of task`],
 								] as const
 							).map(([term, value]) => (
@@ -282,7 +276,7 @@ export function WorkDetailPage() {
 										onClick={() => void copyLogPath()}
 										className="text-muted-foreground hover:text-foreground hover:underline hover:underline-offset-4"
 									>
-										{detail.logFile} ↓
+										Download {detail.logFile}
 									</button>
 								</dd>
 							</div>

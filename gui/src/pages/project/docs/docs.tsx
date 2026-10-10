@@ -105,7 +105,7 @@ function SectionBody({ section }: { section: DocsSection }) {
 						{section.description}
 					</p>
 					{section.refs ? (
-						<p className="text-muted-foreground">Refs → {section.refs}</p>
+						<p className="text-muted-foreground">Refs: {section.refs}</p>
 					) : null}
 				</div>
 			) : null}
@@ -128,9 +128,7 @@ export function DocsPage() {
 	const navigate = useNavigate();
 	const search = useSearch({ from: "/$projectId/docs" });
 	const [regenerating, setRegenerating] = useState(false);
-	const [freshness, setFreshness] = useState(
-		"Generated Oct 10 · from live repo",
-	);
+	const [freshness, setFreshness] = useState("Generated Oct 10");
 	const panelRef = useRef<HTMLDivElement>(null);
 
 	const deepDive = search.deepdive ?? null;
@@ -150,7 +148,7 @@ export function DocsPage() {
 		setRegenerating(true);
 		window.setTimeout(() => {
 			setRegenerating(false);
-			setFreshness("Generated just now · from live repo");
+			setFreshness("Generated just now");
 		}, 1200);
 	};
 
@@ -189,7 +187,7 @@ export function DocsPage() {
 									onClick={regenerate}
 									disabled={regenerating}
 								>
-									{regenerating ? "Regenerating…" : "Regenerate"}
+									{regenerating ? "Regenerating..." : "Regenerate"}
 								</Button>
 							</div>
 						</div>
@@ -200,7 +198,7 @@ export function DocsPage() {
 							{docs.overview.body}
 						</p>
 						<div className="flex flex-wrap items-center gap-2">
-							<span className="text-muted-foreground">Scenarios →</span>
+							<span className="text-muted-foreground">Scenarios</span>
 							{docs.overview.scenarios.map((scenario) => (
 								<span
 									key={scenario}
@@ -210,7 +208,7 @@ export function DocsPage() {
 								</span>
 							))}
 						</div>
-						<p className="text-muted-foreground">Refs → {docs.overview.refs}</p>
+						<p className="text-muted-foreground">Refs: {docs.overview.refs}</p>
 					</div>
 
 					{docs.sections.map((section) => (

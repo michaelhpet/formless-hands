@@ -146,7 +146,7 @@ export function TasksPage() {
 				status: "open",
 				priority: input.priority,
 				meta: "open · just now",
-				ref: "—",
+				ref: "None",
 				age: "now",
 			},
 			...prev,
@@ -168,7 +168,7 @@ export function TasksPage() {
 				<div className="flex flex-col gap-1">
 					<h1 className="text-lg leading-5.5 font-bold">Tasks</h1>
 					<p className="text-muted-foreground">
-						{stats.open} open · {stats.blocked} blocked · ordered by priority ↓
+						{stats.open} open · {stats.blocked} blocked
 					</p>
 				</div>
 				<div className="flex items-center gap-2">
@@ -283,7 +283,7 @@ export function TasksPage() {
 						</EmptyMedia>
 						<EmptyTitle>No tasks found</EmptyTitle>
 						<EmptyDescription>
-							No tasks match “{query}”
+							No tasks match "{query}"
 							{status !== "all" ? ` with status ${STATUS_LABELS[status]}` : ""}
 							{source !== "all" ? ` from ${SOURCE_LABELS[source]}` : ""}. Try a
 							different search or filter.

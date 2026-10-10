@@ -52,7 +52,7 @@ const AUTH_FIX_TRANSCRIPT: TranscriptLine[] = [
 	},
 	{
 		time: "10:31:10",
-		text: "read src/daemon/auth.rs — verifying single refresh path…",
+		text: "read src/daemon/auth.rs — verifying single refresh path...",
 		tone: "plain",
 	},
 ];
@@ -105,7 +105,7 @@ function genericTranscript(work: Work): TranscriptLine[] {
 export function getWorkDetail(work: Work, allWorks: Work[]): WorkDetail {
 	return {
 		...work,
-		agent: "opencode CLI",
+		agent: "Opencode CLI",
 		logFile: `work-${work.id}.log`,
 		task: INITIAL_TASKS.find((item) => item.id === work.taskRef),
 		attempt:

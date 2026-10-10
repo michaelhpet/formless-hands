@@ -125,7 +125,7 @@ export function SettingsPage() {
 										disabled={maxWorkers <= 1}
 										className="px-3 py-1.5 text-muted-foreground hover:text-foreground disabled:opacity-40"
 									>
-										−
+										-
 									</button>
 									<span
 										aria-live="polite"
@@ -168,7 +168,7 @@ export function SettingsPage() {
 							</SettingRow>
 							<SettingRow label="Status" hint="Local loopback only">
 								<span className="text-success">
-									● Listening · 127.0.0.1:{port || "—"}
+									Listening · 127.0.0.1:{port || "None"}
 								</span>
 							</SettingRow>
 						</div>

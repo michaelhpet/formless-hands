@@ -16,28 +16,22 @@ export function PriorityLabel({ priority }: { priority: 0 | 1 | 2 | 3 }) {
 	);
 }
 
-const STATUS_MARK: Record<
-	TaskStatus,
-	{ glyph: string; label: string; className: string }
-> = {
-	open: { glyph: "○", label: "Open", className: "text-muted-foreground" },
-	triaged: { glyph: "●", label: "Triaged", className: "text-foreground" },
+const STATUS_MARK: Record<TaskStatus, { label: string; className: string }> = {
+	open: { label: "Open", className: "text-muted-foreground" },
+	triaged: { label: "Triaged", className: "text-foreground" },
 	"in-progress": {
-		glyph: "●",
 		label: "In progress",
 		className: "text-warning",
 	},
-	completed: { glyph: "●", label: "Completed", className: "text-foreground" },
+	completed: { label: "Completed", className: "text-foreground" },
 	"in-review": {
-		glyph: "●",
 		label: "In review",
 		className: "text-foreground",
 	},
-	merged: { glyph: "●", label: "Merged", className: "text-success" },
-	closed: { glyph: "●", label: "Closed", className: "text-muted-foreground" },
-	blocked: { glyph: "●", label: "Blocked", className: "text-destructive" },
+	merged: { label: "Merged", className: "text-success" },
+	closed: { label: "Closed", className: "text-muted-foreground" },
+	blocked: { label: "Blocked", className: "text-destructive" },
 	"needs-context": {
-		glyph: "●",
 		label: "Needs context",
 		className: "text-destructive",
 	},
@@ -45,11 +39,7 @@ const STATUS_MARK: Record<
 
 export function TaskStatusMark({ status }: { status: TaskStatus }) {
 	const mark = STATUS_MARK[status];
-	return (
-		<span className={cn("flex items-center gap-1.5", mark.className)}>
-			{mark.glyph} {mark.label}
-		</span>
-	);
+	return <span className={mark.className}>{mark.label}</span>;
 }
 
 export function accentBorderClass(status: TaskStatus): string | undefined {

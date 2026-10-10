@@ -11,11 +11,11 @@ export interface TaskReview {
 const LIN_142_REVIEW: TaskReview = {
 	taskId: "LIN-142",
 	prRef: "PR #412",
-	subtitle: "LIN-142 · 3 files · +45 −12 · work #128",
+	subtitle: "LIN-142 · 3 files · +45 -12 · work #128",
 	files: [
 		{
 			path: "src/poller.rs",
-			stats: "+31 −4 · 2 comments",
+			stats: "+31 -4 · 2 comments",
 			hunks: [
 				{
 					oldRange: "88–90",
@@ -64,7 +64,7 @@ const LIN_142_REVIEW: TaskReview = {
 		},
 		{
 			path: "src/daemon/auth.rs",
-			stats: "+7 −8",
+			stats: "+7 -8",
 			hunks: [
 				{
 					oldRange: "40–41",
@@ -88,7 +88,7 @@ const LIN_142_REVIEW: TaskReview = {
 		},
 		{
 			path: "src/db.rs",
-			stats: "+7 −0 · 2 hunks",
+			stats: "+7 -0 · 2 hunks",
 			hunks: [
 				{
 					oldRange: "41–43",

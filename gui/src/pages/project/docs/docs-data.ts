@@ -102,7 +102,7 @@ const FORMLESS_HANDS_DOCS: ProjectDocs = {
 			key: "health",
 			title: "HEALTH · LEAD TIME + HOTSPOTS",
 			description:
-				"Lead time is falling as backoff fixes land — Thursday's median is a quarter of Tuesday's. Anything in the top-right of churn × complexity (currently poller.rs) gets mandatory human review before merge, no matter how green the tests are.",
+				"Lead time is falling as backoff fixes land — Thursday's median is a quarter of Tuesday's. Anything in the top-right of churn x complexity (currently poller.rs) gets mandatory human review before merge, no matter how green the tests are.",
 			refs: "git log · works.started_at / finished_at · rust-code-analysis",
 			figure: "health",
 			hotspots: [
@@ -211,8 +211,8 @@ const FORMLESS_HANDS_DOCS: ProjectDocs = {
 			],
 			refs: "core/src/main.rs · core/src/poller.rs · core/src/ipc.rs · gui/src/router.tsx · Cargo.toml",
 			links: [
-				{ label: "Runtime →", dive: "runtime" },
-				{ label: "Data model →", dive: "data-model" },
+				{ label: "Runtime", dive: "runtime" },
+				{ label: "Data model", dive: "data-model" },
 			],
 			staticChips: ["11 modules · main.rs"],
 		},
@@ -245,8 +245,8 @@ const FORMLESS_HANDS_DOCS: ProjectDocs = {
 			],
 			refs: "core/src/db.rs (DDL + migrate) · core/src/models.rs (Task · TaskSource · Project)",
 			links: [
-				{ label: "Runtime →", dive: "runtime" },
-				{ label: "Components →", dive: "components" },
+				{ label: "Runtime", dive: "runtime" },
+				{ label: "Components", dive: "components" },
 			],
 		},
 		runtime: {
@@ -293,8 +293,8 @@ const FORMLESS_HANDS_DOCS: ProjectDocs = {
 			],
 			refs: "core/src/main.rs · core/src/worker.rs · core/src/poller.rs · core/src/watcher.rs",
 			links: [
-				{ label: "ADR-041 Accepted", dive: "decisions" },
-				{ label: "ADR-040 Proposed", dive: "decisions" },
+				{ label: "ADR-041 accepted", dive: "decisions" },
+				{ label: "ADR-040 proposed", dive: "decisions" },
 			],
 			taskRef: "LIN-142",
 			workId: 128,
@@ -321,15 +321,15 @@ const FORMLESS_HANDS_DOCS: ProjectDocs = {
 					kind: "prose",
 					heading: "HOTSPOTS",
 					paragraphs: [
-						"Churn × complexity decides what needs human eyes: src/poller.rs at 14 works and complexity 18 currently tops the list, so it gets mandatory review before merge no matter how green the tests are.",
+						"Churn x complexity decides what needs human eyes: src/poller.rs at 14 works and complexity 18 currently tops the list, so it gets mandatory review before merge no matter how green the tests are.",
 						"core/src/db.rs and the GUI project pages trail well behind — 6 and 11 works at single-digit complexity — and merge on green.",
 					],
 				},
 			],
 			refs: "git log · works.started_at / finished_at · rust-code-analysis",
 			links: [
-				{ label: "Runtime →", dive: "runtime" },
-				{ label: "Decisions →", dive: "decisions" },
+				{ label: "Runtime", dive: "runtime" },
+				{ label: "Decisions", dive: "decisions" },
 			],
 		},
 		decisions: {
@@ -361,8 +361,8 @@ const FORMLESS_HANDS_DOCS: ProjectDocs = {
 			],
 			refs: "work transcripts · task notes",
 			links: [
-				{ label: "Runtime →", dive: "runtime" },
-				{ label: "Components →", dive: "components" },
+				{ label: "Runtime", dive: "runtime" },
+				{ label: "Components", dive: "components" },
 			],
 		},
 	},

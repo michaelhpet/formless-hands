@@ -56,7 +56,7 @@ function TaskRowMenu({ task }: { task: Task }) {
 						<IconCopy data-icon="inline-start" />
 						Copy task id
 					</DropdownMenuItem>
-					{task.ref !== "—" ? (
+					{task.ref !== "None" ? (
 						<DropdownMenuItem onClick={() => void copy(task.ref)}>
 							<IconCopy data-icon="inline-start" />
 							Copy branch / PR ref
@@ -179,7 +179,7 @@ export function TasksTableView({ tasks }: { tasks: Task[] }) {
 				<p className="text-muted-foreground">
 					{tasks.length === 0
 						? "0 tasks"
-						: `${start + 1}–${start + pageItems.length} of ${tasks.length} · ordered by priority ↓`}
+						: `${start + 1} to ${start + pageItems.length} of ${tasks.length}`}
 				</p>
 				{pageCount > 1 ? (
 					<Pagination className="mx-0 w-auto">

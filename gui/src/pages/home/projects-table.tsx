@@ -104,7 +104,7 @@ export const INITIAL_PROJECTS: Project[] = [
 	{
 		id: "billing-worker",
 		name: "billing-worker",
-		branch: "—",
+		branch: "None",
 		updated: "clone failed",
 		status: "error",
 		remote: "git@github.com:acme/billing-worker.git",
@@ -380,7 +380,7 @@ export function ProjectTable({ projects }: { projects: Project[] }) {
 						</EmptyMedia>
 						<EmptyTitle>No projects found</EmptyTitle>
 						<EmptyDescription>
-							No projects match “{query}”
+							No projects match "{query}"
 							{filter !== "all" ? ` with status ${filter}` : ""}. Try a
 							different search or filter.
 						</EmptyDescription>
@@ -490,7 +490,7 @@ export function ProjectTable({ projects }: { projects: Project[] }) {
 						<p className="text-muted-foreground">
 							{visible.length === 0
 								? "0 projects"
-								: `${start + 1}–${start + pageItems.length} of ${visible.length}`}
+								: `${start + 1} to ${start + pageItems.length} of ${visible.length}`}
 						</p>
 						{pageCount > 1 ? (
 							<Pagination className="mx-0 w-auto">

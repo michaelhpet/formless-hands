@@ -82,7 +82,7 @@ export function DeepDivePanel({
 				),
 			)}
 			<div className="flex flex-col gap-1.5">
-				<p className="text-muted-foreground">Refs → {dive.refs}</p>
+				<p className="text-muted-foreground">Refs: {dive.refs}</p>
 				<div className="flex flex-wrap gap-1.5">
 					{dive.links.map((link) => (
 						<button
@@ -100,7 +100,7 @@ export function DeepDivePanel({
 							params={{ projectId, taskId: dive.taskRef }}
 							className="border bg-background px-2.5 py-1 text-foreground hover:border-ring"
 						>
-							{dive.taskRef} →
+							{dive.taskRef}
 						</Link>
 					) : null}
 					{dive.workId ? (
@@ -109,7 +109,7 @@ export function DeepDivePanel({
 							params={{ projectId, workId: String(dive.workId) }}
 							className="border bg-background px-2.5 py-1 text-foreground hover:border-ring"
 						>
-							Work #{dive.workId} →
+							Work #{dive.workId}
 						</Link>
 					) : null}
 					{dive.staticChips?.map((chip) => (

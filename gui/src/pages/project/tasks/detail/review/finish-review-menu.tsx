@@ -37,7 +37,7 @@ export function FinishReviewMenu({
 					</DropdownMenuGroup>
 					<Textarea
 						aria-label="Review summary message"
-						placeholder="Leave a summary message…"
+						placeholder="Leave a summary message..."
 						value={message}
 						onChange={(event) => setMessage(event.target.value)}
 					/>

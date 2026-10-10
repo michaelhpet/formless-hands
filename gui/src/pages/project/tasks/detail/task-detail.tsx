@@ -1,10 +1,11 @@
-import { IconSearch } from "@tabler/icons-react";
+import { IconFileText, IconSearch } from "@tabler/icons-react";
 import { Link, useParams } from "@tanstack/react-router";
 import { cn } from "cn";
 import { useEffect, useState } from "react";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
 	Empty,
 	EmptyContent,
@@ -48,25 +49,24 @@ function DescriptionSection({
 					<ul className="flex flex-col gap-1.5">
 						{detail.criteria.map((item, index) => (
 							<li key={item.text}>
-								<Button
-									variant="ghost"
-									size="sm"
-									className="h-auto justify-start gap-2.5 px-0 py-0 text-left font-normal hover:bg-transparent"
-									aria-pressed={item.done}
-									onClick={() => onToggleCriterion(index)}
+								<label
+									htmlFor={`criterion-${index}`}
+									className="flex cursor-pointer items-start gap-2.5"
 								>
-									<span
-										aria-hidden="true"
+									<Checkbox
+										id={`criterion-${index}`}
+										checked={item.done}
+										onCheckedChange={() => onToggleCriterion(index)}
 										className={cn(
-											item.done ? "text-success" : "text-muted-foreground",
+											item.done
+												? "data-checked:border-success data-checked:bg-success"
+												: "border-muted-foreground",
 										)}
-									>
-										{item.done ? "☑" : "☐"}
-									</span>
+									/>
 									<span className="text-[13px] text-foreground">
 										{item.text}
 									</span>
-								</Button>
+								</label>
 							</li>
 						))}
 					</ul>
@@ -81,12 +81,10 @@ function DescriptionSection({
 						{detail.attachments.map((file) => (
 							<Card key={file.name} className="w-55 gap-0 py-0">
 								<div className="flex h-30 items-center justify-center bg-card">
-									<span
+									<IconFileText
 										aria-hidden="true"
-										className="text-2xl text-muted-foreground"
-									>
-										◧
-									</span>
+										className="size-6 text-muted-foreground"
+									/>
 								</div>
 								<p className="border-t px-2.5 py-2 text-muted-foreground">
 									{file.name} · {file.size}
@@ -207,7 +205,7 @@ function ReviewSection({
 								>
 									<Textarea
 										aria-label={`Reply to ${comment.author}`}
-										placeholder="Reply…"
+										placeholder="Reply..."
 										value={replyBody}
 										onChange={(event) => onReplyBody(event.target.value)}
 									/>
@@ -320,7 +318,7 @@ export function TaskDetailPage() {
 						</EmptyMedia>
 						<EmptyTitle>Task not found</EmptyTitle>
 						<EmptyDescription>
-							No task with id “{taskId}” in this project.
+							No task with id "{taskId}" in this project.
 						</EmptyDescription>
 					</EmptyHeader>
 					<EmptyContent>
@@ -444,7 +442,9 @@ export function TaskDetailPage() {
 
 	const retryWork = () => {
 		startWork(
-			detail.branch !== "—" ? detail.branch : `wt-${detail.id.toLowerCase()}`,
+			detail.branch !== "None"
+				? detail.branch
+				: `wt-${detail.id.toLowerCase()}`,
 		);
 	};
 
@@ -469,10 +469,7 @@ export function TaskDetailPage() {
 				<div className="flex items-start justify-between gap-3 max-lg:flex-col">
 					<div className="flex min-w-0 flex-col gap-1">
 						<h1 className="text-lg leading-6.5 font-bold">{detail.title}</h1>
-						<p className="text-muted-foreground">
-							{detail.id} · {detail.source} ↗ · opened {detail.openedAge} ·
-							updated {detail.updatedAge}
-						</p>
+						<p className="text-muted-foreground">Opened {detail.openedAge}</p>
 					</div>
 					<div className="flex shrink-0 flex-wrap items-center gap-2">
 						{locked ? null : (

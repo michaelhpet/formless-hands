@@ -97,7 +97,7 @@ export function ProjectSettingsPage() {
 						</EmptyMedia>
 						<EmptyTitle>Project not found</EmptyTitle>
 						<EmptyDescription>
-							No project with id “{projectId}” is tracked.
+							No project with id "{projectId}" is tracked.
 						</EmptyDescription>
 					</EmptyHeader>
 					<EmptyContent>
@@ -164,7 +164,7 @@ export function ProjectSettingsPage() {
 					</div>
 					<div className="flex shrink-0 items-center gap-2">
 						<Button variant="outline" onClick={pollNow} disabled={polling}>
-							{polling ? "Polling…" : "Poll now"}
+							{polling ? "Polling..." : "Poll now"}
 						</Button>
 						<Button onClick={save} disabled={!dirty}>
 							Save changes
@@ -267,7 +267,7 @@ export function ProjectSettingsPage() {
 											source.on ? "text-foreground" : "text-muted-foreground",
 										)}
 									>
-										● {source.on ? "On" : "Off"}
+										{source.on ? "On" : "Off"}
 									</span>
 								</button>
 								<button

@@ -43,13 +43,14 @@ export function toggleSort(current: WorkSort, key: WorkSortKey): WorkSort {
 }
 
 export function sortIndicator(sort: WorkSort, key: WorkSortKey): string {
-	if (sort === key) {
-		return "↓";
+	const ascending = sort === `-${key}`;
+	if (sort !== key && !ascending) {
+		return "";
 	}
-	if (sort === `-${key}`) {
-		return "↑";
+	if (key === "exit") {
+		return ascending ? "Lowest" : "Highest";
 	}
-	return "";
+	return ascending ? "Oldest" : "Newest";
 }
 
 export function ariaSort(

@@ -22,9 +22,7 @@ export function AttentionView({ tasks }: { tasks: Task[] }) {
 
 	return (
 		<div className="flex flex-col gap-2">
-			<p className="text-muted-foreground">
-				{items.length} waiting on you · ordered by priority ↓
-			</p>
+			<p className="text-muted-foreground">{items.length} waiting on you</p>
 			{items.map((task) => (
 				<TaskListRow key={task.id} task={task} />
 			))}

@@ -161,8 +161,7 @@ export function WorksPage() {
 				<div className="flex flex-col gap-1">
 					<h1 className="text-lg leading-5.5 font-bold">Works</h1>
 					<p className="text-muted-foreground">
-						{stats.total} works · {stats.running} running · task_id → worktree →
-						exit
+						{stats.total} works · {stats.running} running
 					</p>
 				</div>
 				<div className="flex items-center gap-2">
@@ -211,7 +210,7 @@ export function WorksPage() {
 				<StatCard
 					label="FAILED"
 					value={String(stats.failed)}
-					sub="Exit ≠ 0"
+					sub="Non-zero exit"
 					valueClassName="text-destructive"
 				/>
 				<StatCard

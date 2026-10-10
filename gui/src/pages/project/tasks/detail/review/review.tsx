@@ -26,7 +26,9 @@ export function TaskReviewPage() {
 		if (!task) {
 			return null;
 		}
-		const prRef = task.ref.startsWith("PR ") ? task.ref.split(" · ")[0] : "—";
+		const prRef = task.ref.startsWith("PR ")
+			? task.ref.split(" · ")[0]
+			: "None";
 		return getTaskReview(task, prRef);
 	});
 	const [approved, setApproved] = useState(false);
@@ -71,7 +73,7 @@ export function TaskReviewPage() {
 						</EmptyMedia>
 						<EmptyTitle>Task not found</EmptyTitle>
 						<EmptyDescription>
-							No task with id “{taskId}” in this project.
+							No task with id "{taskId}" in this project.
 						</EmptyDescription>
 					</EmptyHeader>
 					<EmptyContent>
@@ -177,7 +179,7 @@ export function TaskReviewPage() {
 									approved ? "text-success" : "text-destructive",
 								)}
 							>
-								● {approved ? "Approved" : "Changes requested"}
+								{approved ? "Approved" : "Changes requested"}
 							</span>
 						</Badge>
 						<FinishReviewMenu

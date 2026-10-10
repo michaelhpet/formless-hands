@@ -78,7 +78,7 @@ export function TaskDetailSidebar({
 						params={{ projectId }}
 						className="text-muted-foreground hover:text-foreground"
 					>
-						View all →
+						View all
 					</Link>
 				</div>
 				{detail.works.length === 0 ? (
@@ -89,13 +89,8 @@ export function TaskDetailSidebar({
 							<div className="flex flex-col gap-0.5 px-3.5 py-2.5">
 								<div className="flex items-center justify-between">
 									<span>#{work.id}</span>
-									<span
-										className={cn(
-											"flex items-center gap-1.5",
-											WORK_DOT[work.status],
-										)}
-									>
-										● {WORK_LABEL[work.status]}
+									<span className={cn(WORK_DOT[work.status])}>
+										{WORK_LABEL[work.status]}
 									</span>
 								</div>
 								<span className="text-muted-foreground">{work.meta}</span>
@@ -120,7 +115,7 @@ export function TaskDetailSidebar({
 							className="size-1.5 rounded-full bg-foreground"
 							aria-hidden="true"
 						/>
-						{SOURCE_LABELS[detail.source]} ↗
+						{SOURCE_LABELS[detail.source]}
 					</span>
 				</DetailRow>
 				<DetailRow label="Branch">
@@ -159,7 +154,7 @@ export function TaskDetailSidebar({
 							key={`${item.text}-${item.sub}`}
 							className="flex flex-col gap-0.5"
 						>
-							<span className="text-foreground">● {item.text}</span>
+							<span className="text-foreground">{item.text}</span>
 							<span className="text-muted-foreground">{item.sub}</span>
 						</div>
 					))}

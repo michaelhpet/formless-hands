@@ -67,7 +67,7 @@ export function ThreadBox({
 				>
 					<Textarea
 						aria-label={`Reply to ${thread.author}`}
-						placeholder="Reply…"
+						placeholder="Reply..."
 						value={replyBody}
 						onChange={(event) => onReplyBody(event.target.value)}
 					/>
@@ -91,7 +91,7 @@ export function ThreadBox({
 					onClick={onStartReply}
 					className="border border-dashed px-3 py-2 text-left text-[12px] text-muted-foreground hover:text-foreground"
 				>
-					Reply…
+					Reply...
 				</button>
 			)}
 		</div>

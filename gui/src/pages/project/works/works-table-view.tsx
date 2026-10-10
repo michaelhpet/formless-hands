@@ -134,7 +134,7 @@ function WorkTableRow({
 				{work.started} · {work.duration}
 			</TableCell>
 			<TableCell className="w-24 text-foreground">
-				{work.exitCode === null ? "—" : work.exitCode}
+				{work.exitCode === null ? "None" : work.exitCode}
 			</TableCell>
 			<TableCell className="w-30">
 				<StatusBadge status={work.status} />
@@ -311,7 +311,7 @@ export function WorksTableView({ works }: { works: Work[] }) {
 				<p className="text-muted-foreground">
 					{works.length === 0
 						? "0 works"
-						: `${start + 1}–${start + pageItems.length} of ${works.length}`}
+						: `${start + 1} to ${start + pageItems.length} of ${works.length}`}
 					{selected.size > 0 ? ` · ${selected.size} selected` : ""}
 					{" · Logs stream with tail -f · click a row for work detail"}
 				</p>

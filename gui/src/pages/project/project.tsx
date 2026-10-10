@@ -130,7 +130,7 @@ export function ProjectLayout() {
 								</EmptyMedia>
 								<EmptyTitle>Project not found</EmptyTitle>
 								<EmptyDescription>
-									No project with id “{projectId}” is tracked.
+									No project with id "{projectId}" is tracked.
 								</EmptyDescription>
 							</EmptyHeader>
 						</Empty>
