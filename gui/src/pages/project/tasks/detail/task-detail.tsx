@@ -325,7 +325,7 @@ export function TaskDetailPage() {
 					</EmptyHeader>
 					<EmptyContent>
 						<Link
-							to="/project/$projectId/tasks"
+							to="/$projectId/tasks"
 							params={{ projectId: projectId ?? "" }}
 						>
 							<Button variant="outline" size="sm">
@@ -458,7 +458,7 @@ export function TaskDetailPage() {
 						</Link>,
 						<Link
 							key="tasks"
-							to="/project/$projectId/tasks"
+							to="/$projectId/tasks"
 							params={{ projectId: projectId ?? "" }}
 						>
 							Tasks
@@ -491,7 +491,7 @@ export function TaskDetailPage() {
 						) : latestWork ? (
 							succeeded ? (
 								<Link
-									to="/project/$projectId/tasks/$taskId/review"
+									to="/$projectId/tasks/$taskId/review"
 									params={{
 										projectId: projectId ?? "",
 										taskId: detail.id,
@@ -501,7 +501,7 @@ export function TaskDetailPage() {
 								</Link>
 							) : (
 								<Link
-									to="/project/$projectId/works"
+									to="/$projectId/works"
 									params={{ projectId: projectId ?? "" }}
 								>
 									<Button>See work</Button>
@@ -509,7 +509,7 @@ export function TaskDetailPage() {
 							)
 						) : reviewable ? (
 							<Link
-								to="/project/$projectId/tasks/$taskId/review"
+								to="/$projectId/tasks/$taskId/review"
 								params={{
 									projectId: projectId ?? "",
 									taskId: detail.id,
@@ -522,7 +522,7 @@ export function TaskDetailPage() {
 						)}
 						{reviewable && !primaryIsReview ? (
 							<Link
-								to="/project/$projectId/tasks/$taskId/review"
+								to="/$projectId/tasks/$taskId/review"
 								params={{
 									projectId: projectId ?? "",
 									taskId: detail.id,

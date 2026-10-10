@@ -66,7 +66,7 @@ export function TaskDetailSidebar({
 						WORKS · {detail.works.length}
 					</span>
 					<Link
-						to="/project/$projectId/works"
+						to="/$projectId/works"
 						params={{ projectId }}
 						className="text-muted-foreground hover:text-foreground"
 					>

@@ -1,6 +1,14 @@
 import { IconArrowLeft, IconSearch } from "@tabler/icons-react";
-import { Link, Outlet, useNavigate, useParams } from "@tanstack/react-router";
+import {
+	Link,
+	Outlet,
+	useCanGoBack,
+	useNavigate,
+	useParams,
+	useRouter,
+} from "@tanstack/react-router";
 import { cn } from "cn";
+import { BrandLogo } from "@/components/brand-logo";
 import { DaemonStatus } from "@/components/daemon-status";
 import {
 	Empty,
@@ -21,27 +29,40 @@ import {
 import { INITIAL_PROJECTS } from "@/pages/home";
 
 const TABS = [
-	{ to: "/project/$projectId/tasks", label: "Tasks" },
-	{ to: "/project/$projectId/works", label: "Works" },
-	{ to: "/project/$projectId/docs", label: "Docs" },
-	{ to: "/project/$projectId/settings", label: "Settings" },
+	{ to: "/$projectId/tasks", label: "Tasks" },
+	{ to: "/$projectId/works", label: "Works" },
+	{ to: "/$projectId/docs", label: "Docs" },
+	{ to: "/$projectId/settings", label: "Settings" },
 ] as const;
 
 export function ProjectLayout() {
 	const { projectId } = useParams({ strict: false });
 	const navigate = useNavigate();
+	const router = useRouter();
+	const canGoBack = useCanGoBack();
 	const project = INITIAL_PROJECTS.find((item) => item.id === projectId);
+
+	const goBack = () => {
+		if (canGoBack) {
+			router.history.back();
+		} else {
+			navigate({ to: "/" });
+		}
+	};
 
 	return (
 		<div className="flex min-h-screen flex-col bg-background font-mono text-xs antialiased">
 			<header className="sticky top-0 z-40 flex items-center justify-between gap-4 border-b bg-background px-4 py-2.5">
 				<div className="flex min-w-0 items-center gap-5">
+					<Link to="/" aria-label="Formless Hands home">
+						<BrandLogo />
+					</Link>
 					<Select
 						value={project?.id}
 						onValueChange={(id) => {
 							if (id) {
 								navigate({
-									to: "/project/$projectId/tasks",
+									to: "/$projectId/tasks",
 									params: { projectId: id },
 								});
 							}
@@ -69,13 +90,14 @@ export function ProjectLayout() {
 						</SelectContent>
 					</Select>
 					<nav className="flex items-center gap-5" aria-label="Project">
-						<Link
-							to="/"
-							aria-label="Back to projects"
-							className="flex size-7 shrink-0 items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground"
+						<button
+							type="button"
+							onClick={goBack}
+							aria-label="Go back"
+							className="flex size-7 shrink-0 cursor-pointer items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground"
 						>
 							<IconArrowLeft className="size-4" />
-						</Link>
+						</button>
 						{TABS.map((tab) => (
 							<Link
 								key={tab.to}

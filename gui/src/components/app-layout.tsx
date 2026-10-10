@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { cn } from "cn";
+import { BrandLogo } from "@/components/brand-logo";
 import { DaemonStatus } from "@/components/daemon-status";
 
 export function AppLayout({
@@ -13,8 +14,8 @@ export function AppLayout({
 		<div className="flex min-h-screen flex-col bg-background font-mono text-xs antialiased">
 			<header className="sticky top-0 z-40 flex h-12 items-center justify-between border-b bg-background px-4">
 				<nav className="flex items-center gap-5" aria-label="Primary">
-					<Link to="/" className="text-sm font-bold text-foreground">
-						Formless Hands
+					<Link to="/" aria-label="Formless Hands home">
+						<BrandLogo />
 					</Link>
 					<Link
 						to="/"

@@ -24,7 +24,7 @@ function TaskCard({ task }: { task: Task }) {
 	const done = task.status === "merged" || task.status === "closed";
 	const openDetail = () => {
 		navigate({
-			to: "/project/$projectId/tasks/$taskId",
+			to: "/$projectId/tasks/$taskId",
 			params: { projectId: projectId ?? "", taskId: task.id },
 		});
 	};

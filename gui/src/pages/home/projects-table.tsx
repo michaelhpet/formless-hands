@@ -239,7 +239,7 @@ function ProjectRowMenu({ project }: { project: Project }) {
 					<DropdownMenuItem
 						onClick={() =>
 							navigate({
-								to: "/project/$projectId/tasks",
+								to: "/$projectId/tasks",
 								params: { projectId: project.id },
 							})
 						}
@@ -291,7 +291,7 @@ export function ProjectTable({ projects }: { projects: Project[] }) {
 
 	const openProject = (projectId: string) => {
 		navigate({
-			to: "/project/$projectId/tasks",
+			to: "/$projectId/tasks",
 			params: { projectId },
 		});
 	};

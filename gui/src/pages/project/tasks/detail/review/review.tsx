@@ -76,7 +76,7 @@ export function TaskReviewPage() {
 					</EmptyHeader>
 					<EmptyContent>
 						<Link
-							to="/project/$projectId/tasks"
+							to="/$projectId/tasks"
 							params={{ projectId: projectId ?? "" }}
 						>
 							<Button variant="outline" size="sm">
@@ -144,14 +144,14 @@ export function TaskReviewPage() {
 						</Link>,
 						<Link
 							key="tasks"
-							to="/project/$projectId/tasks"
+							to="/$projectId/tasks"
 							params={{ projectId: projectId ?? "" }}
 						>
 							Tasks
 						</Link>,
 						<Link
 							key="task"
-							to="/project/$projectId/tasks/$taskId"
+							to="/$projectId/tasks/$taskId"
 							params={{
 								projectId: projectId ?? "",
 								taskId: review.taskId,

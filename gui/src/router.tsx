@@ -36,7 +36,7 @@ const settingsRoute = createRoute({
 
 const projectRoute = createRoute({
 	getParentRoute: () => rootRoute,
-	path: "/project/$projectId",
+	path: "/$projectId",
 	component: ProjectLayout,
 });
 
@@ -44,8 +44,9 @@ function ProjectIndexRedirect() {
 	const { projectId } = useParams({ strict: false });
 	return (
 		<Navigate
-			to="/project/$projectId/tasks"
+			to="/$projectId/tasks"
 			params={{ projectId: projectId ?? "" }}
+			replace
 		/>
 	);
 }

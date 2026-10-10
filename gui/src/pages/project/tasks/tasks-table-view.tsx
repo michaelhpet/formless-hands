@@ -74,7 +74,7 @@ function TaskTableRow({ task }: { task: Task }) {
 	const navigate = useNavigate();
 	const openDetail = () => {
 		navigate({
-			to: "/project/$projectId/tasks/$taskId",
+			to: "/$projectId/tasks/$taskId",
 			params: { projectId: projectId ?? "", taskId: task.id },
 		});
 	};
