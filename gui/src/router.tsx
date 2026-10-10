@@ -2,9 +2,18 @@ import {
 	createRootRoute,
 	createRoute,
 	createRouter,
+	Navigate,
 	Outlet,
+	useParams,
 } from "@tanstack/react-router";
 import { HomePage } from "./pages/home";
+import {
+	DocsPage,
+	ProjectLayout,
+	ProjectSettingsPage,
+	TasksPage,
+	WorksPage,
+} from "./pages/project";
 import { SettingsPage } from "./pages/settings";
 
 const rootRoute = createRootRoute({
@@ -23,7 +32,63 @@ const settingsRoute = createRoute({
 	component: SettingsPage,
 });
 
-const routeTree = rootRoute.addChildren([homeRoute, settingsRoute]);
+const projectRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/project/$projectId",
+	component: ProjectLayout,
+});
+
+function ProjectIndexRedirect() {
+	const { projectId } = useParams({ strict: false });
+	return (
+		<Navigate
+			to="/project/$projectId/tasks"
+			params={{ projectId: projectId ?? "" }}
+		/>
+	);
+}
+
+const projectIndexRoute = createRoute({
+	getParentRoute: () => projectRoute,
+	path: "/",
+	component: ProjectIndexRedirect,
+});
+
+const tasksRoute = createRoute({
+	getParentRoute: () => projectRoute,
+	path: "/tasks",
+	component: TasksPage,
+});
+
+const worksRoute = createRoute({
+	getParentRoute: () => projectRoute,
+	path: "/works",
+	component: WorksPage,
+});
+
+const docsRoute = createRoute({
+	getParentRoute: () => projectRoute,
+	path: "/docs",
+	component: DocsPage,
+});
+
+const projectSettingsRoute = createRoute({
+	getParentRoute: () => projectRoute,
+	path: "/settings",
+	component: ProjectSettingsPage,
+});
+
+const routeTree = rootRoute.addChildren([
+	homeRoute,
+	settingsRoute,
+	projectRoute.addChildren([
+		projectIndexRoute,
+		tasksRoute,
+		worksRoute,
+		docsRoute,
+		projectSettingsRoute,
+	]),
+]);
 
 export const router = createRouter({ routeTree });
 

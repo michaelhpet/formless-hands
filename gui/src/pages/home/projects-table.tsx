@@ -5,6 +5,7 @@ import {
 	IconSearch,
 	IconTrash,
 } from "@tabler/icons-react";
+import { useNavigate } from "@tanstack/react-router";
 import { cn } from "cn";
 import { useState } from "react";
 import { StatusBadge } from "@/components/status-badge";
@@ -219,6 +220,7 @@ function TasksCell({ project }: { project: Project }) {
 }
 
 function ProjectRowMenu({ project }: { project: Project }) {
+	const navigate = useNavigate();
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger
@@ -234,7 +236,14 @@ function ProjectRowMenu({ project }: { project: Project }) {
 			/>
 			<DropdownMenuContent align="end">
 				<DropdownMenuGroup>
-					<DropdownMenuItem>
+					<DropdownMenuItem
+						onClick={() =>
+							navigate({
+								to: "/project/$projectId/tasks",
+								params: { projectId: project.id },
+							})
+						}
+					>
 						<IconFolderOpen data-icon="inline-start" />
 						Open
 					</DropdownMenuItem>
@@ -253,6 +262,7 @@ function ProjectRowMenu({ project }: { project: Project }) {
 }
 
 export function ProjectTable({ projects }: { projects: Project[] }) {
+	const navigate = useNavigate();
 	const [query, setQuery] = useState("");
 	const [filter, setFilter] = useState<StatusFilter>("all");
 	const [page, setPage] = useState(1);
@@ -277,6 +287,13 @@ export function ProjectTable({ projects }: { projects: Project[] }) {
 
 	const goToPage = (next: number) => {
 		setPage(Math.min(Math.max(1, next), pageCount));
+	};
+
+	const openProject = (projectId: string) => {
+		navigate({
+			to: "/project/$projectId/tasks",
+			params: { projectId },
+		});
 	};
 
 	return (
@@ -373,7 +390,18 @@ export function ProjectTable({ projects }: { projects: Project[] }) {
 							</TableHeader>
 							<TableBody>
 								{pageItems.map((project) => (
-									<TableRow key={project.id} className="divide-x divide-border">
+									<TableRow
+										key={project.id}
+										tabIndex={0}
+										className="cursor-default divide-x divide-border"
+										onClick={() => openProject(project.id)}
+										onKeyDown={(event) => {
+											if (event.key === "Enter" || event.key === " ") {
+												event.preventDefault();
+												openProject(project.id);
+											}
+										}}
+									>
 										<TableCell>
 											<span className="flex flex-col gap-0.5">
 												<span className="text-[13px] font-bold">
@@ -409,7 +437,11 @@ export function ProjectTable({ projects }: { projects: Project[] }) {
 										<TableCell>
 											<TasksCell project={project} />
 										</TableCell>
-										<TableCell className="text-center">
+										<TableCell
+											className="text-center"
+											onClick={(event) => event.stopPropagation()}
+											onKeyDown={(event) => event.stopPropagation()}
+										>
 											<ProjectRowMenu project={project} />
 										</TableCell>
 									</TableRow>

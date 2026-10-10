@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(task_source_id, external_id)
 );
-CREATE TABLE IF NOT EXISTS runs (
+CREATE TABLE IF NOT EXISTS works (
   id          INTEGER PRIMARY KEY,
   task_id     INTEGER NOT NULL REFERENCES tasks(id),
   worktree_path TEXT NOT NULL DEFAULT '',

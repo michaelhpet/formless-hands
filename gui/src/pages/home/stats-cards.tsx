@@ -56,7 +56,7 @@ export function StatCards({ projectCount }: { projectCount: number }) {
 			</Card>
 			<Card>
 				<CardHeader>
-					<CardDescription>RUNS ACTIVE</CardDescription>
+					<CardDescription>WORKS ACTIVE</CardDescription>
 				</CardHeader>
 				<CardContent className="flex flex-col gap-1.5">
 					<div className="text-[26px] leading-8 font-bold">5</div>
@@ -66,7 +66,7 @@ export function StatCards({ projectCount }: { projectCount: number }) {
 						aria-valuenow={62}
 						aria-valuemin={0}
 						aria-valuemax={100}
-						aria-label="Run success rate"
+						aria-label="Work success rate"
 					>
 						<div className="h-full w-[62%] bg-success" />
 					</div>
