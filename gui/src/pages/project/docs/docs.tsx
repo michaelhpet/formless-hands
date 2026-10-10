@@ -99,7 +99,7 @@ export function DocsPage() {
 	return (
 		<div className="flex w-full flex-1 flex-col gap-3 px-5 py-4">
 			<div className="flex w-full items-start gap-3 max-xl:flex-col">
-				<div className="flex w-full min-w-0 max-w-3xl flex-1 flex-col gap-3">
+				<div className="flex w-full flex-col gap-3 xl:w-3xl xl:shrink-0">
 					<div className="flex w-full flex-col gap-2.5 px-0.5 py-1">
 						<div className="flex items-center justify-between px-0.5 py-1">
 							<h1 className="tracking-wide text-muted-foreground">OVERVIEW</h1>
@@ -279,7 +279,7 @@ export function DocsPage() {
 				{deepDive ? (
 					<div
 						ref={panelRef}
-						className="w-full shrink-0 scroll-mt-16 xl:sticky xl:top-16 xl:max-h-[calc(100dvh-5rem)] xl:w-[46%] xl:overflow-y-auto"
+						className="w-full min-w-0 flex-1 scroll-mt-16 xl:sticky xl:top-16 xl:max-h-[calc(100dvh-5rem)] xl:overflow-y-auto"
 					>
 						<DeepDivePanel
 							diveKey={deepDive}
