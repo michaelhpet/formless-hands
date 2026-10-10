@@ -76,6 +76,7 @@ export function TaskDetailSidebar({
 					<Link
 						to="/$projectId/works"
 						params={{ projectId }}
+						search={{ task: detail.id }}
 						className="text-muted-foreground hover:text-foreground"
 					>
 						View all
