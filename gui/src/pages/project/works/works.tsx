@@ -1,7 +1,8 @@
-import { IconSearch, IconX } from "@tabler/icons-react";
+import { Combobox as ComboboxPrimitive } from "@base-ui/react";
+import { IconSearch } from "@tabler/icons-react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { cn } from "cn";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -9,6 +10,14 @@ import {
 	CardDescription,
 	CardHeader,
 } from "@/components/ui/card";
+import {
+	Combobox,
+	ComboboxContent,
+	ComboboxEmpty,
+	ComboboxInput,
+	ComboboxItem,
+	ComboboxList,
+} from "@/components/ui/combobox";
 import {
 	Empty,
 	EmptyContent,
@@ -22,13 +31,6 @@ import {
 	InputGroupAddon,
 	InputGroupInput,
 } from "@/components/ui/input-group";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useDebounce } from "@/hooks/use-debounce";
 import type { WorksSearch } from "@/router";
@@ -78,8 +80,7 @@ export function WorksPage() {
 	const query = search.q ?? "";
 	const status: WorkStatusFilter = search.status ?? "all";
 	const sort = search.sort ?? DEFAULT_SORT;
-	const worktree = search.worktree ?? "all";
-	const task = search.task ?? "";
+	const task = search.task ?? "all";
 
 	const updateSearch = (patch: Partial<WorksSearch>) => {
 		navigate({
@@ -97,29 +98,33 @@ export function WorksPage() {
 			page: undefined,
 		});
 	};
-	const setWorktree = (value: string) => {
+	const setTask = (value: string) => {
 		updateSearch({
-			worktree: value === "all" ? undefined : value,
+			task: value === "all" ? undefined : value,
 			page: undefined,
 		});
 	};
 
 	const stats = summarizeWorks(works);
-
-	const worktrees = [...new Set(works.map((work) => work.worktree))];
+	const tasks = useMemo(
+		() => [...new Map(works.map((work) => [work.taskRef, work])).values()],
+		[works],
+	);
+	const taskItems = useMemo(
+		() =>
+			ComboboxPrimitive.createItems(tasks, {
+				getValue: (work) => work.taskRef,
+				getLabel: (work) => `${work.taskRef}: ${work.taskTitle}`,
+			}),
+		[tasks],
+	);
 
 	const visible = sortWorks(
 		works.filter((work) => {
 			if (status !== "all" && work.status !== status) {
 				return false;
 			}
-			if (worktree !== "all" && work.worktree !== worktree) {
-				return false;
-			}
-			if (
-				task.trim() !== "" &&
-				work.taskRef.toLowerCase() !== task.trim().toLowerCase()
-			) {
+			if (task !== "all" && work.taskRef !== task) {
 				return false;
 			}
 			const q = query.trim().toLowerCase();
@@ -151,16 +156,11 @@ export function WorksPage() {
 		]);
 	};
 
-	const filtering =
-		query.trim() !== "" ||
-		status !== "all" ||
-		worktree !== "all" ||
-		task.trim() !== "";
+	const filtering = query.trim() !== "" || status !== "all" || task !== "all";
 	const clearFilters = () => {
 		updateSearch({
 			q: undefined,
 			status: undefined,
-			worktree: undefined,
 			task: undefined,
 			page: undefined,
 		});
@@ -176,26 +176,33 @@ export function WorksPage() {
 					</p>
 				</div>
 				<div className="flex items-center gap-2">
-					<Select
-						value={worktree}
-						onValueChange={(value) => {
-							if (value) {
-								setWorktree(value);
-							}
-						}}
+					<Combobox
+						items={taskItems}
+						value={task === "all" ? null : task}
+						onValueChange={(value) => setTask(value ?? "all")}
 					>
-						<SelectTrigger aria-label="Filter by worktree">
-							<SelectValue placeholder="All worktrees" />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="all">All worktrees</SelectItem>
-							{worktrees.map((path) => (
-								<SelectItem key={path} value={path}>
-									{path}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
+						<ComboboxInput
+							placeholder="All tasks"
+							aria-label="Filter by task"
+							showClear
+							className="w-64"
+						/>
+						<ComboboxContent className="min-w-72">
+							<ComboboxEmpty>No tasks found.</ComboboxEmpty>
+							<ComboboxList>
+								{(work) => (
+									<ComboboxItem key={work.taskRef} value={work.taskRef}>
+										<span
+											className="block min-w-0 max-w-64 truncate"
+											title={`${work.taskRef}: ${work.taskTitle}`}
+										>
+											{work.taskRef}: {work.taskTitle}
+										</span>
+									</ComboboxItem>
+								)}
+							</ComboboxList>
+						</ComboboxContent>
+					</Combobox>
 					<NewWorkDialog onCreate={createWork} />
 				</div>
 			</div>
@@ -266,22 +273,6 @@ export function WorksPage() {
 				</div>
 			</div>
 
-			{task.trim() !== "" ? (
-				<div className="flex items-center gap-2">
-					<span className="flex items-center gap-1.5 border bg-card px-2.5 py-1">
-						Task {task.trim()}
-						<button
-							type="button"
-							onClick={() => updateSearch({ task: undefined, page: undefined })}
-							aria-label={`Clear task filter ${task.trim()}`}
-							className="cursor-pointer text-muted-foreground hover:text-foreground"
-						>
-							<IconX className="size-3.5" />
-						</button>
-					</span>
-				</div>
-			) : null}
-
 			{visible.length === 0 ? (
 				<Empty>
 					<EmptyHeader>
@@ -305,7 +296,7 @@ export function WorksPage() {
 				</Empty>
 			) : (
 				<WorksTableView
-					key={`${query}-${status}-${sort}-${worktree}-${task}`}
+					key={`${query}-${status}-${sort}-${task}`}
 					works={visible}
 				/>
 			)}

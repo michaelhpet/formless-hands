@@ -42,15 +42,17 @@ export function toggleSort(current: WorkSort, key: WorkSortKey): WorkSort {
 	return key;
 }
 
-export function sortIndicator(sort: WorkSort, key: WorkSortKey): string {
-	const ascending = sort === `-${key}`;
-	if (sort !== key && !ascending) {
-		return "";
+export function sortDirection(
+	sort: WorkSort,
+	key: WorkSortKey,
+): "asc" | "desc" | null {
+	if (sort === key) {
+		return "desc";
 	}
-	if (key === "exit") {
-		return ascending ? "Lowest" : "Highest";
+	if (sort === `-${key}`) {
+		return "asc";
 	}
-	return ascending ? "Oldest" : "Newest";
+	return null;
 }
 
 export function ariaSort(

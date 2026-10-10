@@ -1,4 +1,9 @@
-import { IconCopy, IconDotsVertical } from "@tabler/icons-react";
+import {
+	IconArrowDown,
+	IconArrowUp,
+	IconCopy,
+	IconDotsVertical,
+} from "@tabler/icons-react";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useState } from "react";
 import { StatusBadge } from "@/components/status-badge";
@@ -29,7 +34,7 @@ import {
 import {
 	ariaSort,
 	DEFAULT_SORT,
-	sortIndicator,
+	sortDirection,
 	toggleSort,
 	type Work,
 	type WorkSortKey,
@@ -152,11 +157,11 @@ function WorkTableRow({
 
 function SortButton({
 	label,
-	indicator,
+	direction,
 	onClick,
 }: {
 	label: string;
-	indicator: string;
+	direction: "asc" | "desc" | null;
 	onClick: () => void;
 }) {
 	return (
@@ -167,7 +172,11 @@ function SortButton({
 			className="flex cursor-pointer items-center gap-1 uppercase hover:text-foreground"
 		>
 			{label}
-			{indicator ? <span aria-hidden="true">{indicator}</span> : null}
+			{direction === "desc" ? (
+				<IconArrowDown aria-hidden="true" className="size-3.5" />
+			) : direction === "asc" ? (
+				<IconArrowUp aria-hidden="true" className="size-3.5" />
+			) : null}
 		</button>
 	);
 }
@@ -257,7 +266,7 @@ export function WorksTableView({ works }: { works: Work[] }) {
 							>
 								<SortButton
 									label="Work"
-									indicator={sortIndicator(sort, "started")}
+									direction={sortDirection(sort, "started")}
 									onClick={() => changeSort("started")}
 								/>
 							</TableHead>
@@ -273,7 +282,7 @@ export function WorksTableView({ works }: { works: Work[] }) {
 							>
 								<SortButton
 									label="Started"
-									indicator={sortIndicator(sort, "started")}
+									direction={sortDirection(sort, "started")}
 									onClick={() => changeSort("started")}
 								/>
 							</TableHead>
@@ -283,7 +292,7 @@ export function WorksTableView({ works }: { works: Work[] }) {
 							>
 								<SortButton
 									label="Exit"
-									indicator={sortIndicator(sort, "exit")}
+									direction={sortDirection(sort, "exit")}
 									onClick={() => changeSort("exit")}
 								/>
 							</TableHead>
