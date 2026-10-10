@@ -17,6 +17,60 @@ import {
 	WorkDetailPage,
 	WorksPage,
 } from "./pages/project";
+import type { TaskStatus } from "./pages/project/tasks/tasks-data";
+import type { WorkSort, WorkStatus } from "./pages/project/works/works-data";
+
+export interface ProjectsSearch {
+	q?: string;
+	status?: "connected" | "error";
+	page?: number;
+}
+
+export interface TasksSearch {
+	q?: string;
+	source?: "linear" | "github";
+	status?: TaskStatus;
+	view?: "kanban" | "table";
+	page?: number;
+}
+
+export interface WorksSearch {
+	q?: string;
+	status?: WorkStatus;
+	sort?: WorkSort;
+	worktree?: string;
+	page?: number;
+}
+
+function parseText(value: unknown): string | undefined {
+	return typeof value === "string" && value !== "" ? value : undefined;
+}
+
+function parsePage(value: unknown): number | undefined {
+	const n =
+		typeof value === "number"
+			? value
+			: typeof value === "string" && value !== ""
+				? Number(value)
+				: Number.NaN;
+	return Number.isInteger(n) && n >= 1 ? n : undefined;
+}
+
+const TASK_STATUSES: TaskStatus[] = [
+	"open",
+	"triaged",
+	"in-progress",
+	"completed",
+	"in-review",
+	"blocked",
+	"needs-context",
+	"merged",
+	"closed",
+];
+
+const WORK_STATUSES: WorkStatus[] = ["running", "success", "failed"];
+const WORK_SORTS: WorkSort[] = ["started", "duration", "exit"];
+
 import { SettingsPage } from "./pages/settings";
 
 const rootRoute = createRootRoute({
@@ -27,6 +81,14 @@ const homeRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/",
 	component: HomePage,
+	validateSearch: (search: Record<string, unknown>): ProjectsSearch => ({
+		q: parseText(search.q),
+		status:
+			search.status === "connected" || search.status === "error"
+				? search.status
+				: undefined,
+		page: parsePage(search.page),
+	}),
 });
 
 const settingsRoute = createRoute({
@@ -62,6 +124,23 @@ const tasksRoute = createRoute({
 	getParentRoute: () => projectRoute,
 	path: "/tasks",
 	component: TasksPage,
+	validateSearch: (search: Record<string, unknown>): TasksSearch => ({
+		q: parseText(search.q),
+		source:
+			search.source === "linear" || search.source === "github"
+				? search.source
+				: undefined,
+		status:
+			typeof search.status === "string" &&
+			(TASK_STATUSES as string[]).includes(search.status)
+				? (search.status as TaskStatus)
+				: undefined,
+		view:
+			search.view === "kanban" || search.view === "table"
+				? search.view
+				: undefined,
+		page: parsePage(search.page),
+	}),
 });
 
 const taskDetailRoute = createRoute({
@@ -80,6 +159,21 @@ const worksRoute = createRoute({
 	getParentRoute: () => projectRoute,
 	path: "/works",
 	component: WorksPage,
+	validateSearch: (search: Record<string, unknown>): WorksSearch => ({
+		q: parseText(search.q),
+		status:
+			typeof search.status === "string" &&
+			(WORK_STATUSES as string[]).includes(search.status)
+				? (search.status as WorkStatus)
+				: undefined,
+		sort:
+			typeof search.sort === "string" &&
+			(WORK_SORTS as string[]).includes(search.sort)
+				? (search.sort as WorkSort)
+				: undefined,
+		worktree: parseText(search.worktree),
+		page: parsePage(search.page),
+	}),
 });
 
 const workDetailRoute = createRoute({

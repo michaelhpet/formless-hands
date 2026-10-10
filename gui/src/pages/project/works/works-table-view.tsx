@@ -1,5 +1,5 @@
 import { IconCopy, IconDotsVertical } from "@tabler/icons-react";
-import { useNavigate, useParams } from "@tanstack/react-router";
+import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useState } from "react";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -144,7 +144,9 @@ function WorkTableRow({
 }
 
 export function WorksTableView({ works }: { works: Work[] }) {
-	const [page, setPage] = useState(1);
+	const navigate = useNavigate();
+	const search = useSearch({ from: "/$projectId/works" });
+	const page = search.page ?? 1;
 	const [selected, setSelected] = useState<Set<number>>(new Set());
 
 	const pageCount = Math.max(1, Math.ceil(works.length / PAGE_SIZE));
@@ -155,7 +157,15 @@ export function WorksTableView({ works }: { works: Work[] }) {
 		pageItems.length > 0 && pageItems.every((work) => selected.has(work.id));
 
 	const goToPage = (next: number) => {
-		setPage(Math.min(Math.max(1, next), pageCount));
+		const clamped = Math.min(Math.max(1, next), pageCount);
+		navigate({
+			from: "/$projectId/works",
+			search: (prev) => ({
+				...prev,
+				page: clamped === 1 ? undefined : clamped,
+			}),
+			replace: true,
+		});
 	};
 
 	const toggle = (id: number) => {

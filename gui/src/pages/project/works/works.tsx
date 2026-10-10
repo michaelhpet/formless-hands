@@ -1,4 +1,5 @@
 import { IconSearch } from "@tabler/icons-react";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { cn } from "cn";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,8 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useDebounce } from "@/hooks/use-debounce";
+import type { WorksSearch } from "@/router";
 import { NewWorkDialog, type NewWorkInput } from "./new-work-dialog";
 import {
 	INITIAL_WORKS,
@@ -71,10 +74,38 @@ function StatCard({
 
 export function WorksPage() {
 	const [works, setWorks] = useState<Work[]>(INITIAL_WORKS);
-	const [query, setQuery] = useState("");
-	const [status, setStatus] = useState<WorkStatusFilter>("all");
-	const [sort, setSort] = useState<WorkSort>("started");
-	const [worktree, setWorktree] = useState("all");
+	const navigate = useNavigate();
+	const search = useSearch({ from: "/$projectId/works" });
+	const query = search.q ?? "";
+	const status: WorkStatusFilter = search.status ?? "all";
+	const sort: WorkSort = search.sort ?? "started";
+	const worktree = search.worktree ?? "all";
+
+	const updateSearch = (patch: Partial<WorksSearch>) => {
+		navigate({
+			from: "/$projectId/works",
+			search: (prev) => ({ ...prev, ...patch }),
+			replace: true,
+		});
+	};
+	const [draft, setQuery] = useDebounce(query, (value) =>
+		updateSearch({ q: value || undefined, page: undefined }),
+	);
+	const setStatus = (value: WorkStatusFilter) => {
+		updateSearch({
+			status: value === "all" ? undefined : value,
+			page: undefined,
+		});
+	};
+	const setSort = (value: WorkSort) => {
+		updateSearch({ sort: value === "started" ? undefined : value });
+	};
+	const setWorktree = (value: string) => {
+		updateSearch({
+			worktree: value === "all" ? undefined : value,
+			page: undefined,
+		});
+	};
 
 	const stats = summarizeWorks(works);
 
@@ -120,9 +151,12 @@ export function WorksPage() {
 	const filtering =
 		query.trim() !== "" || status !== "all" || worktree !== "all";
 	const clearFilters = () => {
-		setQuery("");
-		setStatus("all");
-		setWorktree("all");
+		updateSearch({
+			q: undefined,
+			status: undefined,
+			worktree: undefined,
+			page: undefined,
+		});
 	};
 
 	return (
@@ -199,7 +233,7 @@ export function WorksPage() {
 					<InputGroupInput
 						placeholder="Search branch, task, worktree..."
 						aria-label="Search works"
-						value={query}
+						value={draft}
 						onChange={(event) => setQuery(event.target.value)}
 					/>
 				</InputGroup>

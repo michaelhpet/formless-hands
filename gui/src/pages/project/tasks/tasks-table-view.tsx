@@ -1,6 +1,5 @@
 import { IconCopy, IconDotsVertical } from "@tabler/icons-react";
-import { useNavigate, useParams } from "@tanstack/react-router";
-import { useState } from "react";
+import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -125,7 +124,9 @@ function TaskTableRow({ task }: { task: Task }) {
 }
 
 export function TasksTableView({ tasks }: { tasks: Task[] }) {
-	const [page, setPage] = useState(1);
+	const navigate = useNavigate();
+	const search = useSearch({ from: "/$projectId/tasks" });
+	const page = search.page ?? 1;
 
 	const pageCount = Math.max(1, Math.ceil(tasks.length / PAGE_SIZE));
 	const currentPage = Math.min(page, pageCount);
@@ -133,7 +134,15 @@ export function TasksTableView({ tasks }: { tasks: Task[] }) {
 	const pageItems = tasks.slice(start, start + PAGE_SIZE);
 
 	const goToPage = (next: number) => {
-		setPage(Math.min(Math.max(1, next), pageCount));
+		const clamped = Math.min(Math.max(1, next), pageCount);
+		navigate({
+			from: "/$projectId/tasks",
+			search: (prev) => ({
+				...prev,
+				page: clamped === 1 ? undefined : clamped,
+			}),
+			replace: true,
+		});
 	};
 
 	return (

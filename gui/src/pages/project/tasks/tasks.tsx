@@ -1,4 +1,5 @@
 import { IconSearch } from "@tabler/icons-react";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { cn } from "cn";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,8 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useDebounce } from "@/hooks/use-debounce";
+import type { TasksSearch } from "@/router";
 import { NewTaskDialog, type NewTaskInput } from "./new-task-dialog";
 import { TaskKanban } from "./task-kanban";
 import {
@@ -76,10 +79,38 @@ function StatCard({
 
 export function TasksPage() {
 	const [tasks, setTasks] = useState<Task[]>(INITIAL_TASKS);
-	const [query, setQuery] = useState("");
-	const [source, setSource] = useState<SourceFilter>("all");
-	const [status, setStatus] = useState<StatusFilter>("all");
-	const [view, setView] = useState<View>("kanban");
+	const navigate = useNavigate();
+	const search = useSearch({ from: "/$projectId/tasks" });
+	const query = search.q ?? "";
+	const source: SourceFilter = search.source ?? "all";
+	const status: StatusFilter = search.status ?? "all";
+	const view: View = search.view ?? "kanban";
+
+	const updateSearch = (patch: Partial<TasksSearch>) => {
+		navigate({
+			from: "/$projectId/tasks",
+			search: (prev) => ({ ...prev, ...patch }),
+			replace: true,
+		});
+	};
+	const [draft, setQuery] = useDebounce(query, (value) =>
+		updateSearch({ q: value || undefined, page: undefined }),
+	);
+	const setSource = (value: SourceFilter) => {
+		updateSearch({
+			source: value === "all" ? undefined : value,
+			page: undefined,
+		});
+	};
+	const setStatus = (value: StatusFilter) => {
+		updateSearch({
+			status: value === "all" ? undefined : value,
+			page: undefined,
+		});
+	};
+	const setView = (value: View) => {
+		updateSearch({ view: value === "kanban" ? undefined : value });
+	};
 
 	const stats = summarizeTasks(tasks);
 
@@ -118,9 +149,12 @@ export function TasksPage() {
 	};
 
 	const clearFilters = () => {
-		setQuery("");
-		setSource("all");
-		setStatus("all");
+		updateSearch({
+			q: undefined,
+			source: undefined,
+			status: undefined,
+			page: undefined,
+		});
 	};
 
 	return (
@@ -189,7 +223,7 @@ export function TasksPage() {
 					<InputGroupInput
 						placeholder="Search id, title, branch..."
 						aria-label="Search tasks"
-						value={query}
+						value={draft}
 						onChange={(event) => setQuery(event.target.value)}
 					/>
 				</InputGroup>

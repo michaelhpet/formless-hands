@@ -5,9 +5,8 @@ import {
 	IconSearch,
 	IconTrash,
 } from "@tabler/icons-react";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { cn } from "cn";
-import { useState } from "react";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -47,6 +46,8 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useDebounce } from "@/hooks/use-debounce";
+import type { ProjectsSearch } from "@/router";
 
 export type ProjectStatus = "connected" | "error";
 
@@ -263,9 +264,27 @@ function ProjectRowMenu({ project }: { project: Project }) {
 
 export function ProjectTable({ projects }: { projects: Project[] }) {
 	const navigate = useNavigate();
-	const [query, setQuery] = useState("");
-	const [filter, setFilter] = useState<StatusFilter>("all");
-	const [page, setPage] = useState(1);
+	const search = useSearch({ from: "/" });
+	const query = search.q ?? "";
+	const filter: StatusFilter = search.status ?? "all";
+	const page = search.page ?? 1;
+
+	const updateSearch = (patch: Partial<ProjectsSearch>) => {
+		navigate({
+			from: "/",
+			search: (prev) => ({ ...prev, ...patch }),
+			replace: true,
+		});
+	};
+	const [draft, setQuery] = useDebounce(query, (value) =>
+		updateSearch({ q: value || undefined, page: undefined }),
+	);
+	const setFilter = (value: StatusFilter) => {
+		updateSearch({
+			status: value === "all" ? undefined : value,
+			page: undefined,
+		});
+	};
 
 	const visible = projects.filter((project) => {
 		if (filter !== "all" && project.status !== filter) {
@@ -286,7 +305,8 @@ export function ProjectTable({ projects }: { projects: Project[] }) {
 	const pageItems = visible.slice(start, start + PAGE_SIZE);
 
 	const goToPage = (next: number) => {
-		setPage(Math.min(Math.max(1, next), pageCount));
+		const clamped = Math.min(Math.max(1, next), pageCount);
+		updateSearch({ page: clamped === 1 ? undefined : clamped });
 	};
 
 	const openProject = (projectId: string) => {
@@ -306,7 +326,7 @@ export function ProjectTable({ projects }: { projects: Project[] }) {
 					<InputGroupInput
 						placeholder="Search name, remote, path..."
 						aria-label="Search projects"
-						value={query}
+						value={draft}
 						onChange={(event) => setQuery(event.target.value)}
 					/>
 				</InputGroup>
@@ -356,8 +376,11 @@ export function ProjectTable({ projects }: { projects: Project[] }) {
 							variant="outline"
 							size="sm"
 							onClick={() => {
-								setQuery("");
-								setFilter("all");
+								updateSearch({
+									q: undefined,
+									status: undefined,
+									page: undefined,
+								});
 							}}
 						>
 							Clear filters
