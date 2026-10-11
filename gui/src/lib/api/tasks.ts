@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { request } from "./config";
 
 export const TASKS_QUERY_KEY = "tasks";
@@ -46,31 +46,70 @@ function getTask(id: number): Promise<Task> {
 
 export function useTasks(params: GetTasksParams) {
 	return useQuery({
-		queryKey: [
-			TASKS_QUERY_KEY,
-			params.project ?? null,
-			params.status ?? null,
-			params.limit ?? null,
-			params.page ?? null,
-		],
+		queryKey: [TASKS_QUERY_KEY, params],
 		queryFn: () => getTasks(params),
 	});
 }
 
-export function useTask(project: string | undefined, id: string | undefined) {
-	const numericId = id !== undefined && /^\d+$/.test(id) ? Number(id) : null;
-	const direct = useQuery({
-		queryKey: [TASKS_QUERY_KEY, numericId],
-		queryFn: () =>
-			numericId === null ? Promise.resolve(undefined) : getTask(numericId),
-		enabled: numericId !== null,
+export function useTask(id: string | undefined) {
+	return useQuery({
+		queryKey: [TASKS_QUERY_KEY, id ?? null],
+		queryFn: async (): Promise<Task | undefined> => {
+			if (id === undefined || !/^\d+$/.test(id)) {
+				return undefined;
+			}
+			return getTask(Number(id));
+		},
+		enabled: id !== undefined,
 	});
-	const list = useTasks({ project, limit: 500 });
-	if (numericId !== null) {
-		return direct;
-	}
-	const match = list.data?.find(
-		(task) => (task.external_id ?? `#${task.id}`) === id,
-	);
-	return { ...list, data: match };
+}
+
+export interface CreateTaskParams {
+	project: string;
+	title: string;
+	body?: string;
+	priority?: number;
+}
+
+function createTask(params: CreateTaskParams): Promise<Task> {
+	return request<Task>("/api/tasks", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(params),
+	});
+}
+
+export function useCreateTask() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: createTask,
+		onSuccess: () => {
+			void queryClient.invalidateQueries({ queryKey: [TASKS_QUERY_KEY] });
+		},
+	});
+}
+
+export interface UpdateTaskParams {
+	id: number;
+	status?: string;
+	priority?: number;
+	instructions?: string;
+}
+
+function updateTask({ id, ...patch }: UpdateTaskParams): Promise<Task> {
+	return request<Task>(`/api/tasks/${id}`, {
+		method: "PATCH",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(patch),
+	});
+}
+
+export function useUpdateTask() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: updateTask,
+		onSuccess: () => {
+			void queryClient.invalidateQueries({ queryKey: [TASKS_QUERY_KEY] });
+		},
+	});
 }

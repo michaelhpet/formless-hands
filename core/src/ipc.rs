@@ -1,4 +1,4 @@
-use crate::{db, models};
+use crate::{db, models, projects, sources};
 use anyhow::{Context, Result};
 use axum::{
     extract::{Path, Query},
@@ -29,10 +29,17 @@ struct TaskQuery {
 
 pub fn router() -> Router {
     Router::new()
-        .route("/api/projects", get(api_projects))
-        .route("/api/sources", get(api_sources))
-        .route("/api/tasks", get(api_tasks))
-        .route("/api/tasks/{id}", get(api_task))
+        .route("/api/projects", get(api_projects).post(api_project_create))
+        .route("/api/projects/{name}", get(api_project))
+        .route("/api/sources", get(api_sources).post(api_source_create))
+        .route(
+            "/api/sources/{id}",
+            get(api_source)
+                .patch(api_source_update)
+                .delete(api_source_delete),
+        )
+        .route("/api/tasks", get(api_tasks).post(api_task_create))
+        .route("/api/tasks/{id}", get(api_task).patch(api_task_update))
         .route("/", get(index))
         .route("/{*path}", get(asset))
 }
@@ -63,11 +70,140 @@ async fn api_projects() -> Result<Json<Vec<models::Project>>, StatusCode> {
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
+async fn api_project(Path(name): Path<String>) -> Result<Json<models::Project>, StatusCode> {
+    let conn = db::connect().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    match db::get_project_by_name(&conn, &name).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? {
+        Some(p) => Ok(Json(p)),
+        None => Err(StatusCode::NOT_FOUND),
+    }
+}
+
+#[derive(Deserialize)]
+struct CreateProject {
+    repo: String,
+    path: Option<String>,
+}
+
+async fn api_project_create(
+    Json(body): Json<CreateProject>,
+) -> Result<(StatusCode, Json<models::Project>), (StatusCode, String)> {
+    if body.repo.trim().is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "repo must not be empty".to_string()));
+    }
+    let planned = projects::plan_add(&body.repo, body.path.as_deref())
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let project = {
+        let conn = db::connect().map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
+        match projects::find_existing(&conn, &planned) {
+            Ok(Some(p)) => p,
+            Ok(None) => projects::insert_planned(&conn, &planned)
+                .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?,
+            Err(_) => return Err((StatusCode::INTERNAL_SERVER_ERROR, String::new())),
+        }
+    };
+    let state = projects::connect_planned(&planned, &project.default_branch).await;
+    let conn = db::connect().map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
+    projects::write_connection(&conn, project.id, &state)
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
+    let project = db::get_project_by_name(&conn, &project.name)
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?
+        .ok_or((StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
+    Ok((StatusCode::CREATED, Json(project)))
+}
+
 async fn api_sources() -> Result<Json<Vec<models::TaskSource>>, StatusCode> {
     let conn = db::connect().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     db::list_sources(&conn, None)
         .map(Json)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn api_source(Path(id): Path<i64>) -> Result<Json<models::TaskSource>, StatusCode> {
+    let conn = db::connect().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    match db::get_source(&conn, id).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? {
+        Some(s) => Ok(Json(s)),
+        None => Err(StatusCode::NOT_FOUND),
+    }
+}
+
+#[derive(Deserialize)]
+struct CreateSource {
+    project: String,
+    kind: String,
+    config: Option<std::collections::HashMap<String, String>>,
+    url: Option<String>,
+}
+
+async fn api_source_create(
+    Json(body): Json<CreateSource>,
+) -> Result<(StatusCode, Json<models::TaskSource>), (StatusCode, String)> {
+    if body.url.is_some() && body.config.as_ref().is_some_and(|c| !c.is_empty()) {
+        return Err((StatusCode::BAD_REQUEST, "pass either url or config, not both".to_string()));
+    }
+    let pairs: Vec<(String, String)> = body.config.unwrap_or_default().into_iter().collect();
+    let (config_json, _) = sources::resolve_config(&body.kind, &pairs, body.url.as_deref())
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let project_id = {
+        let conn = db::connect().map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
+        db::get_project_by_name(&conn, &body.project)
+            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?
+            .map(|p| p.id)
+            .ok_or((StatusCode::NOT_FOUND, format!("no project named '{}'", body.project)))?
+    };
+    let planned = sources::PlannedSource {
+        project_id,
+        kind: body.kind.clone(),
+        config_json,
+    };
+    let id = {
+        let conn = db::connect().map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
+        if sources::is_duplicate(&conn, &planned)
+            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?
+        {
+            return Err((StatusCode::CONFLICT, "that source already exists for this project".to_string()));
+        }
+        sources::insert_planned(&conn, &planned)
+            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?
+    };
+    if let Some(err) = sources::ping_if_linear(&planned.kind).await {
+        let conn = db::connect().map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
+        let _ = db::set_source_error(&conn, id, &err);
+    }
+    let conn = db::connect().map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
+    let source = db::get_source(&conn, id)
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?
+        .ok_or((StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
+    Ok((StatusCode::CREATED, Json(source)))
+}
+
+#[derive(Deserialize)]
+struct UpdateSource {
+    enabled: bool,
+}
+
+async fn api_source_update(
+    Path(id): Path<i64>,
+    Json(body): Json<UpdateSource>,
+) -> Result<Json<models::TaskSource>, StatusCode> {
+    let conn = db::connect().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if !db::set_source_enabled(&conn, id, body.enabled).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    match db::get_source(&conn, id).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? {
+        Some(s) => Ok(Json(s)),
+        None => Err(StatusCode::NOT_FOUND),
+    }
+}
+
+async fn api_source_delete(Path(id): Path<i64>) -> Result<StatusCode, StatusCode> {
+    let conn = db::connect().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if db::remove_source(&conn, id).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(StatusCode::NOT_FOUND)
+    }
 }
 
 async fn api_tasks(
@@ -108,6 +244,81 @@ async fn api_task(Path(id): Path<i64>) -> Result<Json<models::Task>, StatusCode>
         Some(t) => Ok(Json(t)),
         None => Err(StatusCode::NOT_FOUND),
     }
+}
+
+#[derive(Deserialize)]
+struct CreateTask {
+    project: String,
+    title: String,
+    body: Option<String>,
+    priority: Option<i64>,
+}
+
+async fn api_task_create(
+    Json(body): Json<CreateTask>,
+) -> Result<(StatusCode, Json<models::Task>), (StatusCode, String)> {
+    if body.title.trim().is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "title must not be empty".to_string()));
+    }
+    let conn = db::connect().map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
+    let project_id = db::get_project_by_name(&conn, &body.project)
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?
+        .map(|p| p.id)
+        .ok_or((StatusCode::NOT_FOUND, format!("no project named '{}'", body.project)))?;
+    let id = db::insert_task(
+        &conn,
+        &models::NewTask {
+            project_id,
+            task_source_id: None,
+            external_id: None,
+            url: "",
+            title: body.title.trim(),
+            body: body.body.as_deref().unwrap_or(""),
+            priority: body.priority.unwrap_or(0),
+        },
+    )
+    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
+    let task = db::get_task(&conn, id)
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?
+        .ok_or((StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
+    Ok((StatusCode::CREATED, Json(task)))
+}
+
+#[derive(Deserialize)]
+struct UpdateTask {
+    status: Option<String>,
+    priority: Option<i64>,
+    instructions: Option<String>,
+}
+
+async fn api_task_update(
+    Path(id): Path<i64>,
+    Json(body): Json<UpdateTask>,
+) -> Result<Json<models::Task>, (StatusCode, String)> {
+    if let Some(s) = &body.status {
+        if !models::status::valid(s) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "invalid status '{s}' — one of: {}",
+                    models::status::ALL.join(", ")
+                ),
+            ));
+        }
+    }
+    if body.status.is_none() && body.priority.is_none() && body.instructions.is_none() {
+        return Err((StatusCode::BAD_REQUEST, "nothing to update".to_string()));
+    }
+    let conn = db::connect().map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
+    if !db::update_task(&conn, id, body.status.as_deref(), body.priority, body.instructions.as_deref())
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?
+    {
+        return Err((StatusCode::NOT_FOUND, format!("no task #{id}")));
+    }
+    let task = db::get_task(&conn, id)
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?
+        .ok_or((StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
+    Ok(Json(task))
 }
 
 fn content_type(path: &str) -> &'static str {

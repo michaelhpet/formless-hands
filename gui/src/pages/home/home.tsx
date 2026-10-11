@@ -1,7 +1,6 @@
-import { useState } from "react";
 import { AppLayout } from "@/components/app-layout";
 import type { Project as SourceProject } from "@/lib/api/projects";
-import { useProjects } from "@/lib/api/projects";
+import { useCreateProject, useProjects } from "@/lib/api/projects";
 import type { Source } from "@/lib/api/sources";
 import { useSources } from "@/lib/api/sources";
 import type { Task as TaskRecord } from "@/lib/api/tasks";
@@ -21,22 +20,6 @@ function projectSources(
 		.map((source) => ({ name: source.kind, on: source.enabled }));
 }
 
-function inferProject(repo: string): {
-	name: string;
-	remote: string;
-	localPath: string;
-} {
-	const value = repo.trim();
-	if (value.startsWith("~") || value.startsWith("/") || value.startsWith(".")) {
-		const base = value.replace(/\/+$/, "").split("/").pop() ?? value;
-		const name = base.replace(/\.git$/, "") || value;
-		return { name, remote: "None", localPath: value };
-	}
-	const tail = value.replace(/\/+$/, "").split(/[/:]/).pop() ?? value;
-	const name = tail.replace(/\.git$/, "") || value;
-	return { name, remote: value, localPath: "None" };
-}
-
 function taskCounts(tasks: TaskRecord[] | undefined, projectId: number) {
 	const rows = (tasks ?? []).filter((task) => task.project_id === projectId);
 	return {
@@ -46,14 +29,13 @@ function taskCounts(tasks: TaskRecord[] | undefined, projectId: number) {
 }
 
 export function HomePage() {
-	const [created, setCreated] = useState<Project[]>([]);
 	const projectsQuery = useProjects();
 	const sourcesQuery = useSources();
 	const tasksQuery = useTasks({ limit: 500 });
+	const createMutation = useCreateProject();
 
-	const projects: Project[] = [
-		...created,
-		...(projectsQuery.data ?? []).map((project: SourceProject) => {
+	const projects: Project[] = (projectsQuery.data ?? []).map(
+		(project: SourceProject) => {
 			const counts = taskCounts(tasksQuery.data, project.id);
 			return mapApiProject(
 				project,
@@ -61,8 +43,8 @@ export function HomePage() {
 				counts.running,
 				counts.failed,
 			);
-		}),
-	];
+		},
+	);
 
 	const connected = projects.filter(
 		(project) => project.status === "connected",
@@ -73,22 +55,7 @@ export function HomePage() {
 	).length;
 
 	const createProject = (input: NewProjectInput) => {
-		const inferred = inferProject(input.repo);
-		setCreated((prev) => [
-			...prev,
-			{
-				id: inferred.name,
-				name: inferred.name,
-				branch: "main",
-				updated: "just now",
-				status: "connected",
-				remote: inferred.remote,
-				localPath: inferred.localPath,
-				tasksRunning: 0,
-				tasksFailed: 0,
-				sources: [],
-			},
-		]);
+		createMutation.mutate({ repo: input.repo });
 	};
 
 	const loading = projectsQuery.isLoading;
@@ -112,6 +79,14 @@ export function HomePage() {
 					<NewProjectDialog onCreate={createProject} />
 				</div>
 				<StatCards projectCount={projects.length} />
+				{createMutation.isError ? (
+					<p className="text-destructive">
+						Couldn't create project:{" "}
+						{createMutation.error instanceof Error
+							? createMutation.error.message
+							: "unknown error"}
+					</p>
+				) : null}
 				{loading ? (
 					<p className="text-muted-foreground">Loading projects…</p>
 				) : null}

@@ -1,6 +1,6 @@
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { PriorityLabel, TaskStatusMark } from "./task-utils";
-import { SOURCE_LABELS, type Task } from "./tasks-data";
+import { SOURCE_LABELS, type Task, taskDisplayId } from "./tasks-data";
 
 export function TaskListRow({ task }: { task: Task }) {
 	const { projectId } = useParams({ strict: false });
@@ -14,7 +14,7 @@ export function TaskListRow({ task }: { task: Task }) {
 	return (
 		<button
 			type="button"
-			aria-label={`${task.id}: ${task.title}`}
+			aria-label={`${taskDisplayId(task)}: ${task.title}`}
 			onClick={openDetail}
 			className="flex w-full cursor-pointer items-center gap-3 border bg-card px-3.5 py-2.5 text-left hover:border-ring"
 		>
@@ -23,7 +23,7 @@ export function TaskListRow({ task }: { task: Task }) {
 			</span>
 			<span className="flex min-w-0 flex-1 flex-col gap-0.5">
 				<span className="truncate text-[13px] text-foreground">
-					{task.id} · {task.title}
+					{taskDisplayId(task)} · {task.title}
 				</span>
 				<span className="truncate text-muted-foreground">
 					{SOURCE_LABELS[task.source]} · {task.meta}

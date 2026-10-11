@@ -3,6 +3,7 @@ import {
 	type Task,
 	type TaskSourceKind,
 	type TaskStatus,
+	taskDisplayId,
 } from "../tasks-data";
 
 export interface AcceptanceItem {
@@ -177,7 +178,7 @@ function fallbackDetail(task: Task): TaskDetail {
 		activity: [
 			{
 				text: `Polled from ${SOURCE_LABELS[task.source]}`,
-				sub: `${age} · ${task.id}`,
+				sub: `${age} · ${taskDisplayId(task)}`,
 			},
 		],
 	};

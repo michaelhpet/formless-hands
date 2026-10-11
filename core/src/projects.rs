@@ -179,68 +179,166 @@ async fn is_matching_checkout(path: &Path, remote_url: &str) -> Result<bool> {
     Ok(ok && normalize_remote(&origin) == normalize_remote(remote_url))
 }
 
-pub async fn ensure_local(conn: &Connection, project: &Project) -> Result<Project> {
-    let mut target = if project.local_path.is_empty() {
-        default_clone_root().join(&project.name)
+pub struct PlannedProject {
+    pub name: String,
+    pub remote_url: String,
+    pub local_path: String,
+}
+
+pub struct ConnectionState {
+    pub local_path: String,
+    pub default_branch: String,
+    pub status: &'static str,
+    pub status_detail: String,
+}
+
+pub async fn plan_add(repo: &str, path: Option<&str>) -> Result<PlannedProject> {
+    match classify_repo_arg(repo)? {
+        RepoRef::Remote(url) => Ok(PlannedProject {
+            name: derive_github_name(&url)?,
+            remote_url: url.trim().to_string(),
+            local_path: path.unwrap_or("").to_string(),
+        }),
+        RepoRef::Local(dir) => {
+            if path.is_some() {
+                anyhow::bail!("--path is for clone URLs — '{}' already is the checkout", dir.display());
+            }
+            assert_repo(&dir).await?;
+            let dir = worktree_root(&dir).await?;
+            let dir_str = dir.to_string_lossy().to_string();
+            let origin = origin_of(&dir).await;
+            Ok(PlannedProject {
+                name: derive_local_name(&dir)?,
+                remote_url: if origin.is_empty() { dir_str.clone() } else { origin },
+                local_path: dir_str,
+            })
+        }
+    }
+}
+
+pub fn find_existing(conn: &Connection, planned: &PlannedProject) -> Result<Option<Project>> {
+    if let Some(r) = db::get_project_by_name(conn, &planned.name)? {
+        return Ok(Some(r));
+    }
+    if let Some(r) = db::get_project_by_remote(conn, &planned.remote_url)? {
+        return Ok(Some(r));
+    }
+    if !planned.local_path.is_empty() {
+        if let Some(r) = db::get_project_by_local_path(conn, &planned.local_path)? {
+            return Ok(Some(r));
+        }
+    }
+    Ok(None)
+}
+
+pub fn insert_planned(conn: &Connection, planned: &PlannedProject) -> Result<Project> {
+    let id = db::insert_project(
+        &conn,
+        &crate::models::NewProject {
+            name: &planned.name,
+            remote_url: &planned.remote_url,
+            local_path: &planned.local_path,
+        },
+    )?;
+    db::get_project_by_name(conn, &planned.name)?.context(format!("project #{id} vanished"))
+}
+
+pub async fn connect_planned(planned: &PlannedProject, default_branch: &str) -> ConnectionState {
+    let connected = |local_path: String, branch: String| ConnectionState {
+        local_path,
+        default_branch: branch,
+        status: project_status::CONNECTED,
+        status_detail: String::new(),
+    };
+    let mut target = if planned.local_path.is_empty() {
+        default_clone_root().join(&planned.name)
     } else {
-        crate::config::expand_home(&project.local_path)
+        crate::config::expand_home(&planned.local_path)
     };
     if !target.exists() {
-        let conventional = default_clone_root().join(&project.name);
-        if conventional != target && is_matching_checkout(&conventional, &project.remote_url).await? {
-            target = conventional;
+        let conventional = default_clone_root().join(&planned.name);
+        if conventional != target {
+            if let Ok(true) = is_matching_checkout(&conventional, &planned.remote_url).await {
+                target = conventional;
+            }
         }
     }
     let target_str = target.to_string_lossy().to_string();
 
     if target.exists() {
-        let (is_repo, _) = git(&["rev-parse", "--git-dir"], Some(&target)).await?;
+        let (is_repo, _) = git(&["rev-parse", "--git-dir"], Some(&target))
+            .await
+            .unwrap_or((false, String::new()));
         if !is_repo {
-            return fail(conn, project, &target_str, "exists but is not a git repository — move it aside or pass --path to a different directory.", "").await;
+            return error_state(&target_str, default_branch, "exists but is not a git repository — move it aside or pass --path to a different directory.", "");
         }
-        let (ok, origin) = git(&["remote", "get-url", "origin"], Some(&target)).await?;
-        let remote_ok = ok && normalize_remote(&origin) == normalize_remote(&project.remote_url);
-        let local_ok = is_local_remote(&project.remote_url) && project.remote_url == target_str;
+        let (ok, origin) = git(&["remote", "get-url", "origin"], Some(&target))
+            .await
+            .unwrap_or((false, String::new()));
+        let remote_ok = ok && normalize_remote(&origin) == normalize_remote(&planned.remote_url);
+        let local_ok = is_local_remote(&planned.remote_url) && planned.remote_url == target_str;
         if !remote_ok && !local_ok {
-            return fail(conn, project, &target_str, &format!("checkout points at a different remote ('{origin}') — fix with git remote set-url origin {} or pass --path elsewhere.", project.remote_url), "").await;
+            return error_state(&target_str, default_branch, &format!("checkout points at a different remote ('{origin}') — fix with git remote set-url origin {} or pass --path elsewhere.", planned.remote_url), "");
         }
         let branch = detect_branch(&target).await;
-        db::set_project_connection(conn, project.id, &target_str, &branch, project_status::CONNECTED, "")?;
-    } else if is_local_remote(&project.remote_url) && project.remote_url == target_str {
-        return fail(conn, project, "", &format!("local directory '{target_str}' no longer exists — move it back or remove the project."), "").await;
-    } else {
-        if let Some(parent) = target.parent() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("create {}", parent.display()))?;
-        }
-        let (ok, err) = git(&["clone", &project.remote_url, &target_str], None).await?;
-        if !ok {
-            let hint = clone_hint(&project.remote_url, &err);
-            return fail(conn, project, &target_str, &hint, &err).await;
-        }
-        let branch = detect_branch(&target).await;
-        db::set_project_connection(conn, project.id, &target_str, &branch, project_status::CONNECTED, "")?;
+        return connected(target_str, branch);
     }
-    db::get_project_by_name(conn, &project.name)?.context("project vanished")
+    if is_local_remote(&planned.remote_url) && planned.remote_url == target_str {
+        return ConnectionState {
+            local_path: String::new(),
+            default_branch: default_branch.to_string(),
+            status: project_status::ERROR,
+            status_detail: format!("local directory '{target_str}' no longer exists — move it back or remove the project."),
+        };
+    }
+    if let Some(parent) = target.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            return error_state(&target_str, default_branch, &format!("create {}: {e}", parent.display()), "");
+        }
+    }
+    match git(&["clone", &planned.remote_url, &target_str], None).await {
+        Ok((true, _)) => {
+            let branch = detect_branch(&target).await;
+            connected(target_str, branch)
+        }
+        Ok((false, err)) => {
+            let hint = clone_hint(&planned.remote_url, &err);
+            error_state(&target_str, default_branch, &hint, &err)
+        }
+        Err(e) => error_state(&target_str, default_branch, "run git — is git installed and on PATH?", &e.to_string()),
+    }
 }
 
-async fn fail(
-    conn: &Connection,
-    project: &Project,
-    local_path: &str,
-    hint: &str,
-    raw: &str,
-) -> Result<Project> {
-    let detail = if raw.is_empty() {
+fn error_state(target_str: &str, default_branch: &str, hint: &str, raw: &str) -> ConnectionState {
+    let status_detail = if raw.is_empty() {
         hint.to_string()
     } else {
         format!("{hint}\n{}", truncate(raw, 1500))
     };
-    let keep_path = if Path::new(local_path).exists() {
-        local_path
+    let keep_path = if Path::new(target_str).exists() {
+        target_str.to_string()
     } else {
-        ""
+        String::new()
     };
-    db::set_project_connection(conn, project.id, keep_path, &project.default_branch, project_status::ERROR, &detail)?;
+    ConnectionState {
+        local_path: keep_path,
+        default_branch: default_branch.to_string(),
+        status: project_status::ERROR,
+        status_detail,
+    }
+}
+
+pub fn write_connection(conn: &Connection, id: i64, state: &ConnectionState) -> Result<()> {
+    db::set_project_connection(conn, id, &state.local_path, &state.default_branch, state.status, &state.status_detail)
+}
+
+pub async fn add_project(conn: &Connection, repo: &str, path: Option<&str>) -> Result<Project> {
+    let planned = plan_add(repo, path).await?;
+    let project = match find_existing(conn, &planned)? {
+        Some(r) => r,
+        None => insert_planned(conn, &planned)?,
+    };
+    let state = connect_planned(&planned, &project.default_branch).await;
+    write_connection(conn, project.id, &state)?;
     db::get_project_by_name(conn, &project.name)?.context("project vanished")
 }

@@ -25,7 +25,7 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { PriorityLabel, TaskStatusMark } from "./task-utils";
-import { SOURCE_LABELS, type Task } from "./tasks-data";
+import { SOURCE_LABELS, type Task, taskDisplayId } from "./tasks-data";
 
 const PAGE_SIZE = 10;
 
@@ -52,7 +52,7 @@ function TaskRowMenu({ task }: { task: Task }) {
 			/>
 			<DropdownMenuContent align="end">
 				<DropdownMenuGroup>
-					<DropdownMenuItem onClick={() => void copy(task.id)}>
+					<DropdownMenuItem onClick={() => void copy(taskDisplayId(task))}>
 						<IconCopy data-icon="inline-start" />
 						Copy task id
 					</DropdownMenuItem>
@@ -91,7 +91,7 @@ function TaskTableRow({ task }: { task: Task }) {
 		>
 			<TableCell>
 				<span className="flex flex-col gap-0.5">
-					<span className="text-muted-foreground">{task.id}</span>
+					<span className="text-muted-foreground">{taskDisplayId(task)}</span>
 					<span className="text-[13px] text-foreground">{task.title}</span>
 				</span>
 			</TableCell>

@@ -16,7 +16,12 @@ import {
 } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { useProjects } from "@/lib/api/projects";
-import { useSources } from "@/lib/api/sources";
+import {
+	useCreateSource,
+	useDeleteSource,
+	useSetSourceEnabled,
+	useSources,
+} from "@/lib/api/sources";
 import { AddSourceDialog } from "./add-source-dialog";
 
 interface EditableSource {
@@ -35,20 +40,6 @@ const SOURCE_DISPLAY: Record<string, string> = {
 
 function sourceDisplay(name: string): string {
 	return SOURCE_DISPLAY[name] ?? name.charAt(0).toUpperCase() + name.slice(1);
-}
-
-const SOURCE_DEFAULTS: Record<string, { config: string; cursor: string }> = {
-	linear: { config: "team = ENG", cursor: "08f3" },
-	github: { config: "repo = you/formless-hands", cursor: "91bd" },
-};
-
-function sourceDefaults(name: string): { config: string; cursor: string } {
-	return (
-		SOURCE_DEFAULTS[name] ?? {
-			config: "",
-			cursor: Math.random().toString(16).slice(2, 6),
-		}
-	);
 }
 
 export function ProjectSettingsPage() {
@@ -89,6 +80,9 @@ export function ProjectSettingsPage() {
 	const [lastPolled, setLastPolled] = useState("polled 30s ago");
 	const [polling, setPolling] = useState(false);
 	const [savedAt, setSavedAt] = useState<string | null>(null);
+	const createSourceMutation = useCreateSource();
+	const setEnabledMutation = useSetSourceEnabled();
+	const deleteSourceMutation = useDeleteSource();
 
 	useEffect(() => {
 		if (syncedKey.current === liveKey) {
@@ -154,15 +148,39 @@ export function ProjectSettingsPage() {
 	};
 
 	const toggleSource = (sourceId: number) => {
+		const current = sources.find((source) => source.id === sourceId);
 		setSources((prev) =>
 			prev.map((source) =>
 				source.id === sourceId ? { ...source, on: !source.on } : source,
 			),
 		);
+		if (current) {
+			setEnabledMutation.mutate({ id: sourceId, enabled: !current.on });
+		}
 	};
 
 	const removeSource = (sourceId: number) => {
 		setSources((prev) => prev.filter((source) => source.id !== sourceId));
+		deleteSourceMutation.mutate(sourceId);
+	};
+
+	const createSource = (kind: string, config: string) => {
+		if (projectId === undefined) {
+			return;
+		}
+		const parsed: Record<string, string> = {};
+		for (const line of config.split("\n")) {
+			const eq = line.indexOf("=");
+			if (eq === -1) {
+				continue;
+			}
+			const key = line.slice(0, eq).trim();
+			const value = line.slice(eq + 1).trim();
+			if (key !== "") {
+				parsed[key] = value;
+			}
+		}
+		createSourceMutation.mutate({ project: projectId, kind, config: parsed });
 	};
 
 	return (
@@ -320,20 +338,16 @@ export function ProjectSettingsPage() {
 						<div className="px-0 py-0">
 							<AddSourceDialog
 								existing={sources.map((source) => source.name)}
-								onCreate={({ kind, config }) =>
-									setSources((prev) => [
-										...prev,
-										{
-											id: Math.min(0, ...prev.map((source) => source.id)) - 1,
-											name: kind,
-											on: true,
-											config,
-											cursor: sourceDefaults(kind).cursor,
-											lastPolled: null,
-										},
-									])
-								}
+								onCreate={({ kind, config }) => createSource(kind, config)}
 							/>
+							{createSourceMutation.isError ? (
+								<p className="px-3.5 py-2 text-destructive">
+									Couldn't add source:{" "}
+									{createSourceMutation.error instanceof Error
+										? createSourceMutation.error.message
+										: "unknown error"}
+								</p>
+							) : null}
 						</div>
 					</div>
 				</Card>

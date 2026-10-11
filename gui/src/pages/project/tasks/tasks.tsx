@@ -1,7 +1,6 @@
 import { IconSearch } from "@tabler/icons-react";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { cn } from "cn";
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -31,7 +30,7 @@ import {
 } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useDebounce } from "@/hooks/use-debounce";
-import { useTasks } from "@/lib/api/tasks";
+import { useCreateTask, useTasks } from "@/lib/api/tasks";
 import type { TasksSearch } from "@/router";
 import { AttentionView } from "./attention-view";
 import { NewTaskDialog, type NewTaskInput } from "./new-task-dialog";
@@ -44,10 +43,10 @@ import {
 	sortTasks,
 	summarizeTasks,
 	TASK_VIEWS,
-	type Task,
 	type TaskSourceKind,
 	type TaskStatus,
 	type TaskView,
+	taskDisplayId,
 	VIEW_LABELS,
 } from "./tasks-data";
 import { TasksTableView } from "./tasks-table-view";
@@ -85,7 +84,7 @@ function StatCard({
 
 export function TasksPage() {
 	const { projectId } = useParams({ strict: false });
-	const [created, setCreated] = useState<Task[]>([]);
+	const createMutation = useCreateTask();
 	const navigate = useNavigate();
 	const search = useSearch({ from: "/$projectId/tasks" });
 	const query = search.q ?? "";
@@ -97,7 +96,7 @@ export function TasksPage() {
 		status: status === "all" ? undefined : status,
 		limit: 200,
 	});
-	const tasks = [...created, ...(tasksQuery.data ?? []).map(mapApiTask)];
+	const tasks = (tasksQuery.data ?? []).map(mapApiTask);
 
 	const updateSearch = (patch: Partial<TasksSearch>) => {
 		navigate({
@@ -139,26 +138,21 @@ export function TasksPage() {
 			if (!q) {
 				return true;
 			}
-			return [task.id, task.title, task.ref].some((field) =>
+			return [taskDisplayId(task), task.title, task.ref].some((field) =>
 				field.toLowerCase().includes(q),
 			);
 		}),
 	);
 
 	const createTask = (input: NewTaskInput) => {
-		setCreated((prev) => [
-			{
-				id: `TASK-${prev.length + 1}`,
-				source: input.source,
-				title: input.title,
-				status: "open",
-				priority: input.priority,
-				meta: "open · just now",
-				ref: "None",
-				age: "now",
-			},
-			...prev,
-		]);
+		if (projectId === undefined) {
+			return;
+		}
+		createMutation.mutate({
+			project: projectId,
+			title: input.title,
+			priority: input.priority,
+		});
 	};
 
 	const clearFilters = () => {
@@ -198,6 +192,15 @@ export function TasksPage() {
 					<NewTaskDialog onCreate={createTask} />
 				</div>
 			</div>
+
+			{createMutation.isError ? (
+				<p className="text-destructive">
+					Couldn't create task:{" "}
+					{createMutation.error instanceof Error
+						? createMutation.error.message
+						: "unknown error"}
+				</p>
+			) : null}
 
 			<div className="grid w-full grid-cols-2 gap-2.5 xl:grid-cols-5">
 				<StatCard

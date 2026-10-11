@@ -9,6 +9,7 @@ import {
 	type KanbanColumnKey,
 	SOURCE_LABELS,
 	type Task,
+	taskDisplayId,
 } from "./tasks-data";
 
 const COUNT_STYLES: Record<KanbanColumnKey, string | undefined> = {
@@ -34,7 +35,7 @@ function TaskCard({ task }: { task: Task }) {
 			size="sm"
 			tabIndex={0}
 			role="link"
-			aria-label={`${task.id}: ${task.title}`}
+			aria-label={`${taskDisplayId(task)}: ${task.title}`}
 			onClick={openDetail}
 			onKeyDown={(event) => {
 				if (event.key === "Enter" || event.key === " ") {
@@ -51,7 +52,7 @@ function TaskCard({ task }: { task: Task }) {
 			<CardContent className="flex flex-col gap-1.5">
 				<div className="flex items-center justify-between">
 					<span className="text-muted-foreground">
-						{task.id} · {SOURCE_LABELS[task.source]}
+						{taskDisplayId(task)} · {SOURCE_LABELS[task.source]}
 					</span>
 					<PriorityLabel priority={task.priority} />
 				</div>

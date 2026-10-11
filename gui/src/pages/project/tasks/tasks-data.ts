@@ -13,6 +13,7 @@ export type TaskSourceKind = "linear" | "github" | "fh";
 
 export interface Task {
 	id: string;
+	externalId: string | null;
 	source: TaskSourceKind;
 	title: string;
 	status: TaskStatus;
@@ -114,6 +115,7 @@ export const PRIORITY_LABELS: Record<string, string> = {
 export const INITIAL_TASKS: Task[] = [
 	{
 		id: "LIN-144",
+		externalId: "LIN-144",
 		source: "linear",
 		title: "Migrate daemon state file",
 		status: "blocked",
@@ -124,6 +126,7 @@ export const INITIAL_TASKS: Task[] = [
 	},
 	{
 		id: "LIN-150",
+		externalId: "LIN-150",
 		source: "linear",
 		title: "Add retry with backoff to source poller",
 		status: "open",
@@ -134,6 +137,7 @@ export const INITIAL_TASKS: Task[] = [
 	},
 	{
 		id: "LIN-149",
+		externalId: "LIN-149",
 		source: "linear",
 		title: "Wire task priority into queue order",
 		status: "triaged",
@@ -144,6 +148,7 @@ export const INITIAL_TASKS: Task[] = [
 	},
 	{
 		id: "LIN-142",
+		externalId: "LIN-142",
 		source: "linear",
 		title: "Fix auth refresh loop",
 		status: "in-progress",
@@ -154,6 +159,7 @@ export const INITIAL_TASKS: Task[] = [
 	},
 	{
 		id: "GH-881",
+		externalId: "GH-881",
 		source: "github",
 		title: "Implement task table for GUI",
 		status: "completed",
@@ -164,6 +170,7 @@ export const INITIAL_TASKS: Task[] = [
 	},
 	{
 		id: "LIN-151",
+		externalId: "LIN-151",
 		source: "linear",
 		title: "Triage uncategorized linear imports",
 		status: "needs-context",
@@ -174,6 +181,7 @@ export const INITIAL_TASKS: Task[] = [
 	},
 	{
 		id: "LIN-139",
+		externalId: "LIN-139",
 		source: "linear",
 		title: "Add backoff to source poller",
 		status: "in-review",
@@ -184,6 +192,7 @@ export const INITIAL_TASKS: Task[] = [
 	},
 	{
 		id: "GH-893",
+		externalId: "GH-893",
 		source: "github",
 		title: "Add empty states for docs tab",
 		status: "triaged",
@@ -194,6 +203,7 @@ export const INITIAL_TASKS: Task[] = [
 	},
 	{
 		id: "LIN-138",
+		externalId: "LIN-138",
 		source: "linear",
 		title: "Cache poller cursor per source",
 		status: "merged",
@@ -204,6 +214,7 @@ export const INITIAL_TASKS: Task[] = [
 	},
 	{
 		id: "GH-895",
+		externalId: "GH-895",
 		source: "github",
 		title: "Document source config schema",
 		status: "open",
@@ -214,6 +225,7 @@ export const INITIAL_TASKS: Task[] = [
 	},
 	{
 		id: "GH-870",
+		externalId: "GH-870",
 		source: "github",
 		title: "Update CLI help text",
 		status: "in-review",
@@ -224,6 +236,7 @@ export const INITIAL_TASKS: Task[] = [
 	},
 	{
 		id: "GH-865",
+		externalId: "GH-865",
 		source: "github",
 		title: "Fix watcher debounce interval",
 		status: "closed",
@@ -275,7 +288,8 @@ export function mapApiTask(task: {
 			? `PR #${task.pr_number}`
 			: (task.external_id ?? "None");
 	return {
-		id: task.external_id ?? `#${task.id}`,
+		id: String(task.id),
+		externalId: task.external_id,
 		source,
 		title: task.title,
 		status,
@@ -284,6 +298,10 @@ export function mapApiTask(task: {
 		ref,
 		age: "",
 	};
+}
+
+export function taskDisplayId(task: Task): string {
+	return task.externalId ?? task.id;
 }
 
 export function columnForStatus(status: TaskStatus): KanbanColumnKey {

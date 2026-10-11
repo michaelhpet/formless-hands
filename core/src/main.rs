@@ -3,6 +3,7 @@ mod db;
 mod ipc;
 mod linear;
 mod models;
+mod sources;
 mod poller;
 mod projects;
 mod triage;
@@ -171,69 +172,7 @@ async fn main() -> Result<()> {
         Cmd::Project { cmd } => match cmd {
             ProjectCmd::Add { repo, path } => {
                 let conn = open_db()?;
-                let project = match projects::classify_repo_arg(&repo)? {
-                    projects::RepoRef::Remote(url) => {
-                        let name = projects::derive_github_name(&url)?;
-                        match db::get_project_by_name(&conn, &name)? {
-                            Some(r) => r,
-                            None => match db::get_project_by_remote(&conn, url.trim())? {
-                                Some(r) => r,
-                                None => {
-                                    let id = db::insert_project(
-                                        &conn,
-                                        &models::NewProject {
-                                            name: &name,
-                                            remote_url: url.trim(),
-                                            local_path: path.as_deref().unwrap_or(""),
-                                        },
-                                    )?;
-                                    db::get_project_by_name(&conn, &name)?
-                                        .context(format!("project #{id} vanished"))?
-                                }
-                            },
-                        }
-                    }
-                    projects::RepoRef::Local(dir) => {
-                        if path.is_some() {
-                            anyhow::bail!("--path is for clone URLs — '{}' already is the checkout", dir.display());
-                        }
-                        projects::assert_repo(&dir).await?;
-                        let dir = projects::worktree_root(&dir).await?;
-                        let dir_str = dir.to_string_lossy().to_string();
-                        let name = projects::derive_local_name(&dir)?;
-                        let origin = projects::origin_of(&dir).await;
-                        match db::get_project_by_name(&conn, &name)? {
-                            Some(r) => r,
-                            None => {
-                                let by_remote = if origin.is_empty() {
-                                    None
-                                } else {
-                                    db::get_project_by_remote(&conn, &origin)?
-                                };
-                                match by_remote {
-                                    Some(r) => r,
-                                    None => match db::get_project_by_local_path(&conn, &dir_str)? {
-                                        Some(r) => r,
-                                        None => {
-                                            let remote_url = if origin.is_empty() { &dir_str } else { &origin };
-                                            let id = db::insert_project(
-                                                &conn,
-                                                &models::NewProject {
-                                                    name: &name,
-                                                    remote_url,
-                                                    local_path: &dir_str,
-                                                },
-                                            )?;
-                                            db::get_project_by_name(&conn, &name)?
-                                                .context(format!("project #{id} vanished"))?
-                                        }
-                                    },
-                                }
-                            }
-                        }
-                    }
-                };
-                let project = projects::ensure_local(&conn, &project).await?;
+                let project = projects::add_project(&conn, &repo, path.as_deref()).await?;
                 println!("{} [{}] {}", project.name, project.status, project.local_path);
                 if project.status == models::project_status::ERROR {
                     eprintln!("{}", project.status_detail);
@@ -257,69 +196,34 @@ async fn main() -> Result<()> {
         },
         Cmd::Source { cmd } => match cmd {
             SourceCmd::Add { project, kind, set, url } => {
-                if !models::source_kind::valid(&kind) {
-                    anyhow::bail!(
-                        "invalid kind '{kind}' — one of: {}",
-                        models::source_kind::ALL.join(", ")
-                    );
-                }
-                if kind != models::source_kind::LINEAR && url.is_some() {
-                    anyhow::bail!("--url is only supported for linear sources");
-                }
-                if url.is_some() && !set.is_empty() {
-                    anyhow::bail!("pass either --url or -s key=value, not both");
-                }
                 let conn = open_db()?;
                 let project_id = project_id_by_name(&conn, &project)?;
-                let mut map = serde_json::Map::new();
-                if let Some(link) = url {
-                    match linear::parse_linear_url(&link)? {
-                        linear::UrlScope::Team(team) => {
-                            map.insert("team".to_string(), serde_json::Value::String(team));
-                        }
-                        linear::UrlScope::Project(uuid) => {
-                            let (name, teams) = linear::resolve_project(&uuid).await?;
-                            if teams.len() > 1 {
-                                println!("project spans {} teams — scoping to {}", teams.len(), teams[0]);
-                            }
-                            map.insert("team".to_string(), serde_json::Value::String(teams[0].clone()));
-                            map.insert("project".to_string(), serde_json::Value::String(name));
-                        }
-                    }
+                let pairs = sources::parse_set(&set)?;
+                let (config_json, notice) =
+                    sources::resolve_config(&kind, &pairs, url.as_deref()).await?;
+                if let Some(n) = notice {
+                    println!("{n}");
                 }
-                for kv in &set {
-                    let (k, v) = kv.split_once('=').with_context(|| {
-                        format!("bad --set '{kv}' — expected key=value")
-                    })?;
-                    map.insert(k.to_string(), serde_json::Value::String(v.to_string()));
-                }
-                let config_json = serde_json::Value::Object(map).to_string();
-                let duplicate = db::list_sources(&conn, Some(project_id))?
-                    .into_iter()
-                    .any(|s| s.kind == kind && s.config_json == config_json);
-                if duplicate {
+                let planned = sources::PlannedSource {
+                    project_id,
+                    kind: kind.clone(),
+                    config_json,
+                };
+                if sources::is_duplicate(&conn, &planned)? {
                     anyhow::bail!("that source already exists for project '{project}'");
                 }
-                let id = db::insert_source(
-                    &conn,
-                    &models::NewTaskSource {
-                        project_id,
-                        kind: &kind,
-                        config_json: &config_json,
-                    },
-                )?;
-                if kind == models::source_kind::LINEAR {
-                    match linear::ping().await {
-                        Ok(()) => println!("created source #{id} ({kind}) — Linear reachable"),
-                        Err(e) => {
-                            let _ = db::set_source_error(&conn, id, &e.to_string());
-                            eprintln!("created source #{id} ({kind}) but Linear is unreachable:");
-                            eprintln!("{e:#}");
-                            std::process::exit(1);
-                        }
+                let id = sources::insert_planned(&conn, &planned)?;
+                match sources::ping_if_linear(&kind).await {
+                    None if kind == models::source_kind::LINEAR => {
+                        println!("created source #{id} ({kind}) — Linear reachable")
                     }
-                } else {
-                    println!("created source #{id} ({kind})");
+                    None => println!("created source #{id} ({kind})"),
+                    Some(err) => {
+                        let _ = db::set_source_error(&conn, id, &err);
+                        eprintln!("created source #{id} ({kind}) but Linear is unreachable:");
+                        eprintln!("{err}");
+                        std::process::exit(1);
+                    }
                 }
             }
             SourceCmd::List { project } => {

@@ -1,5 +1,5 @@
 import type { ReviewFile } from "@/components/diff-viewer";
-import type { Task } from "../../tasks-data";
+import { type Task, taskDisplayId } from "../../tasks-data";
 
 export interface TaskReview {
 	taskId: string;
@@ -166,7 +166,7 @@ export function getTaskReview(task: Task, prRef: string): TaskReview {
 	return {
 		taskId: task.id,
 		prRef,
-		subtitle: `${task.id} · ${prRef}`,
+		subtitle: `${taskDisplayId(task)} · ${prRef}`,
 		files: [],
 	};
 }

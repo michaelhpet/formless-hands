@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/empty";
 import { Textarea } from "@/components/ui/textarea";
 import { useTask } from "@/lib/api/tasks";
-import { INITIAL_TASKS, mapApiTask } from "../tasks-data";
+import { mapApiTask } from "../tasks-data";
 import { EditTaskDialog } from "./edit-task-dialog";
 import { NewWorkDialog } from "./new-work-dialog";
 import { getTaskDetail, type TaskDetail } from "./task-detail-data";
@@ -294,10 +294,8 @@ function NotesSection({
 
 export function TaskDetailPage() {
 	const { projectId, taskId } = useParams({ strict: false });
-	const liveTask = useTask(projectId, taskId);
-	const task =
-		(liveTask.data ? mapApiTask(liveTask.data) : undefined) ??
-		INITIAL_TASKS.find((item) => item.id === taskId);
+	const liveTask = useTask(taskId);
+	const task = liveTask.data ? mapApiTask(liveTask.data) : undefined;
 	const [detail, setDetail] = useState<TaskDetail | null>(
 		task ? getTaskDetail(task) : null,
 	);
@@ -311,6 +309,14 @@ export function TaskDetailPage() {
 		setReplyingTo(null);
 		setReplyBody("");
 	}, [task]);
+
+	if (liveTask.isLoading) {
+		return (
+			<div className="flex w-full flex-1 items-center justify-center px-5 py-16">
+				<p className="text-muted-foreground">Loading task…</p>
+			</div>
+		);
+	}
 
 	if (!task || !detail) {
 		return (
