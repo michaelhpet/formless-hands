@@ -223,6 +223,48 @@ pub fn record_decision(
     Ok(())
 }
 
+pub fn claim_task(conn: &Connection, id: i64, branch: &str) -> Result<bool> {
+    Ok(conn.execute(
+        "UPDATE tasks SET status = 'in-progress', locked = 1, attempts = attempts + 1,
+           branch = ?1, updated_at = datetime('now')
+         WHERE id = ?2 AND status = 'triaged'",
+        rusqlite::params![branch, id],
+    )? > 0)
+}
+
+pub fn block_task(conn: &Connection, id: i64, error: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE tasks SET status = 'blocked', locked = 0, last_error = ?1,
+           updated_at = datetime('now') WHERE id = ?2",
+        rusqlite::params![error, id],
+    )?;
+    Ok(())
+}
+
+pub fn has_open_work(conn: &Connection) -> Result<bool> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM works WHERE finished_at IS NULL",
+        [],
+        |r| r.get(0),
+    )?;
+    Ok(count > 0)
+}
+
+pub fn insert_work(
+    conn: &Connection,
+    task_id: i64,
+    worktree_path: &str,
+    branch: &str,
+    log_path: &str,
+) -> Result<i64> {
+    conn.execute(
+        "INSERT INTO works (task_id, worktree_path, branch, log_path)
+          VALUES (?1, ?2, ?3, ?4)",
+        rusqlite::params![task_id, worktree_path, branch, log_path],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
 pub fn task_project_id(conn: &Connection, id: i64) -> Result<Option<i64>> {
     let mut st = conn.prepare("SELECT project_id FROM tasks WHERE id = ?1")?;
     let mut rows = st.query_map([id], |r| r.get(0))?;

@@ -1,10 +1,194 @@
 use crate::config::Config;
-use anyhow::Result;
+use crate::{db, models};
+use anyhow::{Context, Result};
 
-pub async fn work_once(cfg: &Config) -> Result<()> {
+fn state_file(kind: &str, task_id: i64, attempt: i64, ext: &str) -> Result<std::path::PathBuf> {
+    let dir = crate::config::expand_home("~/.local/share/formless-hands").join(kind);
+    std::fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
+    Ok(dir.join(format!("task-{task_id}-attempt-{attempt}.{ext}")))
+}
+
+async fn git(args: &[&str], dir: &str) -> Result<(bool, String)> {
+    let out = tokio::process::Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .output()
+        .await
+        .context("run git — is git installed and on PATH?")?;
+    Ok((out.status.success(), String::from_utf8_lossy(&out.stderr).trim().to_string()))
+}
+
+async fn branch_exists(checkout: &str, branch: &str) -> bool {
+    git(&["rev-parse", "--verify", "--quiet", branch], checkout)
+        .await
+        .map(|(ok, _)| ok)
+        .unwrap_or(false)
+}
+
+fn slugify(title: &str) -> String {
+    let mut slug = String::new();
+    let mut last_dash = true;
+    for c in title.to_lowercase().chars() {
+        if c.is_ascii_alphanumeric() {
+            slug.push(c);
+            last_dash = false;
+        } else if !last_dash {
+            slug.push('-');
+            last_dash = true;
+        }
+    }
+    slug.trim_matches('-').chars().take(50).collect::<String>().trim_matches('-').to_string()
+}
+
+fn branch_type(labels_json: &str) -> &'static str {
+    let labels: Vec<String> = serde_json::from_str(labels_json).unwrap_or_default();
+    let has = |w: &str| labels.iter().any(|l| l.eq_ignore_ascii_case(w));
+    if has("bug") || has("fix") {
+        "fix"
+    } else if has("docs") || has("documentation") {
+        "docs"
+    } else if has("chore") || has("maintenance") {
+        "chore"
+    } else if has("refactor") {
+        "refactor"
+    } else if has("test") || has("testing") {
+        "test"
+    } else {
+        "feat"
+    }
+}
+
+fn branch_name(task: &models::Task) -> String {
+    let reference = match task.external_id.as_deref().map(str::trim) {
+        Some(r) if !r.is_empty() => r.to_string(),
+        _ => task.id.to_string(),
+    };
+    let kind = branch_type(&task.labels);
+    let slug = slugify(&task.title);
+    if slug.is_empty() {
+        format!("{kind}/{reference}")
+    } else {
+        format!("{kind}/{reference}-{slug}")
+    }
+}
+
+async fn git_worktree_add(checkout: &str, path: &str, branch: &str) -> Result<()> {
+    let mut args = vec!["worktree", "add", path];
+    if branch_exists(checkout, branch).await {
+        args.push(branch);
+    } else {
+        args.extend(["-b", branch]);
+    }
+    let (ok, err) = git(&args, checkout).await?;
+    if ok {
+        return Ok(());
+    }
+    anyhow::bail!("git worktree add failed: {err}")
+}
+
+pub async fn work_once(_cfg: &Config) -> Result<()> {
+    if db::connect().map(|conn| db::has_open_work(&conn).unwrap_or(true))? {
+        tracing::info!("worker: previous work still open, skipping");
+        return Ok(());
+    }
+    let task = {
+        let conn = db::connect()?;
+        db::migrate(&conn)?;
+        db::list_tasks(&conn, None, Some(models::status::TRIAGED), 1, 0)?.pop()
+    };
+    let task = match task {
+        Some(t) => t,
+        None => {
+            tracing::info!("worker: no triaged tasks, idle");
+            return Ok(());
+        }
+    };
+    let project = {
+        let conn = db::connect()?;
+        db::get_project_by_id(&conn, task.project_id)?
+    };
+    let project = match project {
+        Some(p)
+            if p.status == models::project_status::CONNECTED && !p.local_path.is_empty() =>
+        {
+            p
+        }
+        _ => {
+            tracing::warn!(task = task.id, "worker: project not connected, skipping");
+            return Ok(());
+        }
+    };
+
+    let attempt = task.attempts + 1;
+    let branch = branch_name(&task);
+    let claimed = {
+        let conn = db::connect()?;
+        db::claim_task(&conn, task.id, &branch)?
+    };
+    if !claimed {
+        tracing::info!(task = task.id, "worker: task already claimed, skipping");
+        return Ok(());
+    }
+
+    let worktree_root = crate::config::expand_home("~/.local/share/formless-hands/worktrees");
+    std::fs::create_dir_all(&worktree_root)
+        .with_context(|| format!("create {}", worktree_root.display()))?;
+    let worktree = worktree_root.join(format!("wt-{}-{}", project.name, task.id));
+    let worktree_str = worktree.to_string_lossy().to_string();
+    if let Err(e) = git_worktree_add(&project.local_path, &worktree_str, &branch).await {
+        let conn = db::connect()?;
+        db::block_task(&conn, task.id, &e.to_string())?;
+        tracing::error!(task = task.id, "{e:#}");
+        return Ok(());
+    }
+
+    let prompt_path = state_file("prompts", task.id, attempt, "md")?;
+    let prompt = format!(
+        "# Task {}\n\nSource: {}\nProject: {}\nBranch: {}\nWorktree: {}\n\n## Title\n\n{}\n\n## Body\n\n{}\n\n## Instructions\n\n{}\n",
+        task.external_id.as_deref().unwrap_or("native"),
+        task.source_kind.as_deref().unwrap_or("fh"),
+        project.name,
+        branch,
+        worktree_str,
+        task.title,
+        if task.body.trim().is_empty() { "(none)" } else { &task.body },
+        if task.instructions.trim().is_empty() { "(none)" } else { &task.instructions },
+    );
+    if let Err(e) = std::fs::write(&prompt_path, &prompt)
+        .with_context(|| format!("write {}", prompt_path.display()))
+    {
+        let conn = db::connect()?;
+        db::block_task(&conn, task.id, &e.to_string())?;
+        tracing::error!(task = task.id, "{e:#}");
+        return Ok(());
+    }
+
+    let command = format!("opencode run {} (spawn not implemented)", prompt_path.display());
+    let log_path = state_file("transcripts", task.id, attempt, "log")?;
+    let transcript = format!(
+        "work claim: task #{} attempt {attempt} branch {branch}\nwould run: {command}\n",
+        task.id,
+    );
+    if let Err(e) = std::fs::write(&log_path, &transcript)
+        .with_context(|| format!("write {}", log_path.display()))
+    {
+        let conn = db::connect()?;
+        db::block_task(&conn, task.id, &e.to_string())?;
+        tracing::error!(task = task.id, "{e:#}");
+        return Ok(());
+    }
+
+    let work_id = {
+        let conn = db::connect()?;
+        db::insert_work(&conn, task.id, &worktree_str, &branch, &log_path.to_string_lossy())?
+    };
     tracing::info!(
-        max_workers = cfg.service.max_concurrent_workers,
-        "worker: claim triaged task and run opencode (stub)"
+        task = task.id,
+        work = work_id,
+        branch = %branch,
+        worktree = %worktree_str,
+        "{command}"
     );
     Ok(())
 }
