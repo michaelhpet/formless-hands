@@ -1,7 +1,7 @@
 import { IconFileText, IconSearch } from "@tabler/icons-react";
 import { Link, useParams } from "@tanstack/react-router";
 import { cn } from "cn";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/empty";
 import { Textarea } from "@/components/ui/textarea";
 import { useTask } from "@/lib/api/tasks";
-import { mapApiTask } from "../tasks-data";
+import { mapApiTask, type Task } from "../tasks-data";
 import { EditTaskDialog } from "./edit-task-dialog";
 import { NewWorkDialog } from "./new-work-dialog";
 import { getTaskDetail, type TaskDetail } from "./task-detail-data";
@@ -296,19 +296,6 @@ export function TaskDetailPage() {
 	const { projectId, taskId } = useParams({ strict: false });
 	const liveTask = useTask(taskId);
 	const task = liveTask.data ? mapApiTask(liveTask.data) : undefined;
-	const [detail, setDetail] = useState<TaskDetail | null>(
-		task ? getTaskDetail(task) : null,
-	);
-	const [noteBody, setNoteBody] = useState("");
-	const [replyingTo, setReplyingTo] = useState<number | null>(null);
-	const [replyBody, setReplyBody] = useState("");
-
-	useEffect(() => {
-		setDetail(task ? getTaskDetail(task) : null);
-		setNoteBody("");
-		setReplyingTo(null);
-		setReplyBody("");
-	}, [task]);
 
 	if (liveTask.isLoading) {
 		return (
@@ -318,7 +305,7 @@ export function TaskDetailPage() {
 		);
 	}
 
-	if (!task || !detail) {
+	if (!task) {
 		return (
 			<div className="flex w-full flex-1 items-center justify-center px-5 py-16">
 				<Empty>
@@ -345,6 +332,21 @@ export function TaskDetailPage() {
 			</div>
 		);
 	}
+
+	return <TaskDetailView key={task.id} projectId={projectId} task={task} />;
+}
+
+function TaskDetailView({
+	projectId,
+	task,
+}: {
+	projectId: string | undefined;
+	task: Task;
+}) {
+	const [detail, setDetail] = useState<TaskDetail>(() => getTaskDetail(task));
+	const [noteBody, setNoteBody] = useState("");
+	const [replyingTo, setReplyingTo] = useState<number | null>(null);
+	const [replyBody, setReplyBody] = useState("");
 
 	const toggleCriterion = (index: number) => {
 		setDetail((prev) =>
@@ -484,6 +486,7 @@ export function TaskDetailPage() {
 					<div className="flex shrink-0 flex-wrap items-center gap-2">
 						{locked ? null : (
 							<EditTaskDialog
+								key={detail.id}
 								title={detail.title}
 								priority={detail.priority}
 								onSave={(input) =>

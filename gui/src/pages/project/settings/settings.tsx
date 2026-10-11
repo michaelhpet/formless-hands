@@ -1,7 +1,9 @@
 import { IconSearch } from "@tabler/icons-react";
+import { useForm } from "@tanstack/react-form";
 import { Link, useParams } from "@tanstack/react-router";
 import { cn } from "cn";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
+import * as z from "zod/mini";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +16,7 @@ import {
 	EmptyMedia,
 	EmptyTitle,
 } from "@/components/ui/empty";
+import { Field, FieldError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { usePollProject, useProjects } from "@/lib/api/projects";
 import {
@@ -23,6 +26,7 @@ import {
 	useSources,
 } from "@/lib/api/sources";
 import { formatStamp } from "@/lib/datetime";
+import { fieldErrors } from "@/lib/form";
 import { AddSourceDialog } from "./add-source-dialog";
 
 interface EditableSource {
@@ -34,6 +38,14 @@ interface EditableSource {
 	lastPolled: string | null;
 }
 
+interface ProjectFields {
+	name: string;
+	remote: string;
+	localPath: string;
+	branch: string;
+	status: string;
+}
+
 const SOURCE_DISPLAY: Record<string, string> = {
 	linear: "Linear",
 	github: "GitHub",
@@ -43,6 +55,19 @@ function sourceDisplay(name: string): string {
 	return SOURCE_DISPLAY[name] ?? name.charAt(0).toUpperCase() + name.slice(1);
 }
 
+const nonEmpty = (label: string) =>
+	z
+		.string()
+		.check(
+			z.refine((value: string) => value.trim() !== "", `${label} is required`),
+		);
+
+const projectSettingsSchema = z.object({
+	remote: nonEmpty("Remote"),
+	localPath: nonEmpty("Local path"),
+	branch: nonEmpty("Branch"),
+});
+
 export function ProjectSettingsPage() {
 	const { projectId } = useParams({ strict: false });
 	const projectsQuery = useProjects();
@@ -50,9 +75,8 @@ export function ProjectSettingsPage() {
 	const apiProject = (projectsQuery.data ?? []).find(
 		(item) => item.name === projectId,
 	);
-	const project = apiProject
+	const project: ProjectFields | undefined = apiProject
 		? {
-				id: apiProject.name,
 				name: apiProject.name,
 				remote: apiProject.remote_url,
 				localPath: apiProject.local_path,
@@ -60,7 +84,7 @@ export function ProjectSettingsPage() {
 				status: apiProject.status,
 			}
 		: undefined;
-	const liveSources: EditableSource[] = (sourcesQuery.data ?? [])
+	const sources: EditableSource[] = (sourcesQuery.data ?? [])
 		.filter((source) => apiProject && source.project_id === apiProject.id)
 		.map((source) => ({
 			id: source.id,
@@ -70,39 +94,6 @@ export function ProjectSettingsPage() {
 			cursor: source.cursor,
 			lastPolled: source.last_polled_at,
 		}));
-	const liveKey = `${projectId ?? ""}:${liveSources.map((source) => source.id).join(",")}`;
-	const syncedKey = useRef("");
-	const [name, setName] = useState("");
-	const [remote, setRemote] = useState("");
-	const [localPath, setLocalPath] = useState("");
-	const [branch, setBranch] = useState("");
-	const [baseline, setBaseline] = useState({ name, remote, localPath, branch });
-	const [sources, setSources] = useState<EditableSource[]>([]);
-	const [lastPolled, setLastPolled] = useState("polled 30s ago");
-	const [savedAt, setSavedAt] = useState<string | null>(null);
-	const pollMutation = usePollProject();
-	const createSourceMutation = useCreateSource();
-	const setEnabledMutation = useSetSourceEnabled();
-	const deleteSourceMutation = useDeleteSource();
-
-	useEffect(() => {
-		if (syncedKey.current === liveKey) {
-			return;
-		}
-		syncedKey.current = liveKey;
-		setName(project?.name ?? "");
-		setRemote(project?.remote ?? "");
-		setLocalPath(project?.localPath ?? "");
-		setBranch(project?.branch ?? "");
-		setBaseline({
-			name: project?.name ?? "",
-			remote: project?.remote ?? "",
-			localPath: project?.localPath ?? "",
-			branch: project?.branch ?? "",
-		});
-		setSources(liveSources);
-		setSavedAt(null);
-	});
 
 	if (!project) {
 		return (
@@ -129,16 +120,43 @@ export function ProjectSettingsPage() {
 		);
 	}
 
-	const dirty =
-		name !== baseline.name ||
-		remote !== baseline.remote ||
-		localPath !== baseline.localPath ||
-		branch !== baseline.branch;
+	return (
+		<ProjectSettingsForm
+			key={project.name}
+			projectId={projectId}
+			project={project}
+			sources={sources}
+		/>
+	);
+}
 
-	const save = () => {
-		setBaseline({ name, remote, localPath, branch });
-		setSavedAt("saved just now");
-	};
+function ProjectSettingsForm({
+	projectId,
+	project,
+	sources,
+}: {
+	projectId: string | undefined;
+	project: ProjectFields;
+	sources: EditableSource[];
+}) {
+	const pollMutation = usePollProject();
+	const createSourceMutation = useCreateSource();
+	const setEnabledMutation = useSetSourceEnabled();
+	const deleteSourceMutation = useDeleteSource();
+	const [pollText, setPollText] = useState<string | null>(null);
+	const [savedAt, setSavedAt] = useState<string | null>(null);
+	const form = useForm({
+		defaultValues: {
+			remote: project.remote,
+			localPath: project.localPath,
+			branch: project.branch,
+		},
+		validators: { onSubmit: projectSettingsSchema },
+		onSubmit: ({ value }) => {
+			form.reset(value);
+			setSavedAt("saved just now");
+		},
+	});
 
 	const pollNow = () => {
 		if (projectId === undefined) {
@@ -146,12 +164,12 @@ export function ProjectSettingsPage() {
 		}
 		pollMutation.mutate(projectId, {
 			onSuccess: (result) => {
-				setLastPolled(
+				setPollText(
 					`polled just now · ${result.sources} sources · ${result.upserted} issues`,
 				);
 			},
 			onError: (error) => {
-				setLastPolled(
+				setPollText(
 					error instanceof Error
 						? `poll failed: ${error.message}`
 						: "poll failed",
@@ -162,18 +180,12 @@ export function ProjectSettingsPage() {
 
 	const toggleSource = (sourceId: number) => {
 		const current = sources.find((source) => source.id === sourceId);
-		setSources((prev) =>
-			prev.map((source) =>
-				source.id === sourceId ? { ...source, on: !source.on } : source,
-			),
-		);
 		if (current) {
 			setEnabledMutation.mutate({ id: sourceId, enabled: !current.on });
 		}
 	};
 
 	const removeSource = (sourceId: number) => {
-		setSources((prev) => prev.filter((source) => source.id !== sourceId));
 		deleteSourceMutation.mutate(sourceId);
 	};
 
@@ -196,6 +208,16 @@ export function ProjectSettingsPage() {
 		createSourceMutation.mutate({ project: projectId, kind, config: parsed });
 	};
 
+	const stamps = sources
+		.map((source) => source.lastPolled)
+		.filter((stamp): stamp is string => stamp !== null)
+		.sort();
+	const lastPolled =
+		pollText ??
+		(stamps.length > 0
+			? `last polled ${formatStamp(stamps[stamps.length - 1])}`
+			: "never polled");
+
 	return (
 		<div className="flex w-full flex-1 flex-col gap-3 px-5 py-4">
 			<div className="flex flex-col gap-2">
@@ -211,7 +233,7 @@ export function ProjectSettingsPage() {
 					<div className="flex flex-col gap-1">
 						<h1 className="text-xl leading-6.5 font-bold">Project settings</h1>
 						<p className="text-muted-foreground">
-							{name || projectId} · sources polled hourly
+							{project.name} · sources polled hourly
 							{savedAt ? ` · ${savedAt}` : ""}
 						</p>
 					</div>
@@ -223,9 +245,16 @@ export function ProjectSettingsPage() {
 						>
 							{pollMutation.isPending ? "Polling..." : "Poll now"}
 						</Button>
-						<Button onClick={save} disabled={!dirty}>
-							Save changes
-						</Button>
+						<form.Subscribe selector={(state) => state.isDirty}>
+							{(dirty) => (
+								<Button
+									onClick={() => void form.handleSubmit()}
+									disabled={!dirty}
+								>
+									Save changes
+								</Button>
+							)}
+						</form.Subscribe>
 					</div>
 				</div>
 			</div>
@@ -240,41 +269,73 @@ export function ProjectSettingsPage() {
 							<span className="shrink-0 text-muted-foreground">Name</span>
 							<Input
 								aria-label="Project name"
-								value={name}
+								value={project.name}
 								disabled
 								title="Inferred from the repository — cannot be renamed"
 								className="h-7 max-w-80 border-transparent text-right font-bold opacity-70 shadow-none"
 							/>
 						</div>
-						<div className="flex items-center justify-between gap-3 border-b px-3.5 py-2.5">
-							<span className="shrink-0 text-muted-foreground">Remote</span>
-							<Input
-								aria-label="Remote URL"
-								value={remote}
-								onChange={(event) => setRemote(event.target.value)}
-								className="h-7 max-w-80 border-transparent text-right shadow-none hover:border-input focus-visible:border-input"
-							/>
-						</div>
-						<div className="flex items-center justify-between gap-3 border-b px-3.5 py-2.5">
-							<span className="shrink-0 text-muted-foreground">Local path</span>
-							<Input
-								aria-label="Local path"
-								value={localPath}
-								onChange={(event) => setLocalPath(event.target.value)}
-								className="h-7 max-w-80 border-transparent text-right text-muted-foreground shadow-none hover:border-input focus-visible:border-input"
-							/>
-						</div>
-						<div className="flex items-center justify-between gap-3 border-b px-3.5 py-2.5">
-							<span className="shrink-0 text-muted-foreground">
-								Default branch
-							</span>
-							<Input
-								aria-label="Default branch"
-								value={branch}
-								onChange={(event) => setBranch(event.target.value)}
-								className="h-7 max-w-80 border-transparent text-right shadow-none hover:border-input focus-visible:border-input"
-							/>
-						</div>
+						<form.Field name="remote">
+							{(field) => (
+								<div className="flex items-center justify-between gap-3 border-b px-3.5 py-2.5">
+									<span className="shrink-0 text-muted-foreground">Remote</span>
+									<Field>
+										<Input
+											aria-label="Remote URL"
+											value={field.state.value}
+											onBlur={field.handleBlur}
+											onChange={(event) =>
+												field.handleChange(event.target.value)
+											}
+											className="h-7 max-w-80 border-transparent text-right shadow-none hover:border-input focus-visible:border-input"
+										/>
+										<FieldError errors={fieldErrors(field.state.meta.errors)} />
+									</Field>
+								</div>
+							)}
+						</form.Field>
+						<form.Field name="localPath">
+							{(field) => (
+								<div className="flex items-center justify-between gap-3 border-b px-3.5 py-2.5">
+									<span className="shrink-0 text-muted-foreground">
+										Local path
+									</span>
+									<Field>
+										<Input
+											aria-label="Local path"
+											value={field.state.value}
+											onBlur={field.handleBlur}
+											onChange={(event) =>
+												field.handleChange(event.target.value)
+											}
+											className="h-7 max-w-80 border-transparent text-right text-muted-foreground shadow-none hover:border-input focus-visible:border-input"
+										/>
+										<FieldError errors={fieldErrors(field.state.meta.errors)} />
+									</Field>
+								</div>
+							)}
+						</form.Field>
+						<form.Field name="branch">
+							{(field) => (
+								<div className="flex items-center justify-between gap-3 border-b px-3.5 py-2.5">
+									<span className="shrink-0 text-muted-foreground">
+										Default branch
+									</span>
+									<Field>
+										<Input
+											aria-label="Default branch"
+											value={field.state.value}
+											onBlur={field.handleBlur}
+											onChange={(event) =>
+												field.handleChange(event.target.value)
+											}
+											className="h-7 max-w-80 border-transparent text-right shadow-none hover:border-input focus-visible:border-input"
+										/>
+										<FieldError errors={fieldErrors(field.state.meta.errors)} />
+									</Field>
+								</div>
+							)}
+						</form.Field>
 						<div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
 							<span className="text-muted-foreground">Status</span>
 							{project.status === "connected" ? (
@@ -291,17 +352,7 @@ export function ProjectSettingsPage() {
 						<h2 className="tracking-wide text-muted-foreground">
 							SOURCES · {sources.length}
 						</h2>
-						<span className="text-muted-foreground">
-							{(() => {
-								const stamps = liveSources
-									.map((source) => source.lastPolled)
-									.filter((stamp): stamp is string => stamp !== null)
-									.sort();
-								return stamps.length > 0
-									? `last polled ${formatStamp(stamps[stamps.length - 1])}`
-									: lastPolled;
-							})()}
-						</span>
+						<span className="text-muted-foreground">{lastPolled}</span>
 					</div>
 					<div className="flex flex-col">
 						{sources.map((source) => (

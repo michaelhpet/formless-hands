@@ -1,5 +1,7 @@
 import { IconPlus } from "@tabler/icons-react";
+import { useForm } from "@tanstack/react-form";
 import { useState } from "react";
+import * as z from "zod/mini";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -40,6 +42,98 @@ function kindLabel(kind: string): string {
 	return KIND_LABELS[kind] ?? kind.charAt(0).toUpperCase() + kind.slice(1);
 }
 
+const sourceSchema = z.object({
+	kind: z.enum(["linear", "github"]),
+	config: z.string(),
+});
+
+function SourceForm({
+	kinds,
+	onSubmit,
+}: {
+	kinds: string[];
+	onSubmit: (input: NewSourceInput) => void;
+}) {
+	const form = useForm({
+		defaultValues: { kind: kinds[0] ?? "linear", config: "" },
+		validators: { onSubmit: sourceSchema },
+		onSubmit: ({ value }) => {
+			onSubmit({
+				kind: value.kind,
+				config: value.config.trim() || KIND_HINTS[value.kind],
+			});
+			form.reset();
+		},
+	});
+
+	return (
+		<form
+			className="flex flex-col gap-4"
+			onSubmit={(event) => {
+				event.preventDefault();
+				void form.handleSubmit();
+			}}
+		>
+			<FieldGroup>
+				<form.Field name="kind">
+					{(field) => (
+						<Field>
+							<FieldLabel htmlFor="new-source-kind">Kind</FieldLabel>
+							<Select
+								value={field.state.value}
+								onValueChange={(value) => {
+									if (value !== null) {
+										field.handleChange(value);
+									}
+								}}
+								items={Object.fromEntries(
+									kinds.map((kind) => [kind, kindLabel(kind)]),
+								)}
+							>
+								<SelectTrigger id="new-source-kind" className="w-full">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{kinds.map((kind) => (
+										<SelectItem key={kind} value={kind}>
+											{kindLabel(kind)}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</Field>
+					)}
+				</form.Field>
+				<form.Field name="config">
+					{(field) => (
+						<Field>
+							<FieldLabel htmlFor="new-source-config">Config</FieldLabel>
+							<Input
+								id="new-source-config"
+								value={field.state.value}
+								onBlur={field.handleBlur}
+								onChange={(event) => field.handleChange(event.target.value)}
+								placeholder="team = ENG"
+								autoComplete="off"
+							/>
+						</Field>
+					)}
+				</form.Field>
+			</FieldGroup>
+			<DialogFooter>
+				<DialogClose
+					render={
+						<Button type="button" variant="outline">
+							Cancel
+						</Button>
+					}
+				/>
+				<Button type="submit">Add source</Button>
+			</DialogFooter>
+		</form>
+	);
+}
+
 export function AddSourceDialog({
 	existing,
 	onCreate,
@@ -51,6 +145,11 @@ export function AddSourceDialog({
 	const available = ["linear", "github"].filter(
 		(kind) => !existing.includes(kind),
 	);
+
+	const submit = (input: NewSourceInput) => {
+		onCreate(input);
+		setOpen(false);
+	};
 
 	return (
 		<Dialog open={open} onOpenChange={setOpen}>
@@ -82,64 +181,11 @@ export function AddSourceDialog({
 						All source kinds are already added.
 					</p>
 				) : (
-					<form
-						className="flex flex-col gap-4"
-						onSubmit={(event) => {
-							event.preventDefault();
-							const data = new FormData(event.currentTarget);
-							const kind = String(data.get("kind") ?? available[0]);
-							const config = String(data.get("config") ?? "").trim();
-							if (!available.includes(kind)) {
-								return;
-							}
-							onCreate({ kind, config: config || KIND_HINTS[kind] });
-							event.currentTarget.reset();
-							setOpen(false);
-						}}
-					>
-						<FieldGroup>
-							<Field>
-								<FieldLabel htmlFor="new-source-kind">Kind</FieldLabel>
-								<Select
-									name="kind"
-									defaultValue={available[0]}
-									items={Object.fromEntries(
-										available.map((kind) => [kind, kindLabel(kind)]),
-									)}
-								>
-									<SelectTrigger id="new-source-kind" className="w-full">
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										{available.map((kind) => (
-											<SelectItem key={kind} value={kind}>
-												{kindLabel(kind)}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
-							</Field>
-							<Field>
-								<FieldLabel htmlFor="new-source-config">Config</FieldLabel>
-								<Input
-									id="new-source-config"
-									name="config"
-									placeholder="team = ENG"
-									autoComplete="off"
-								/>
-							</Field>
-						</FieldGroup>
-						<DialogFooter>
-							<DialogClose
-								render={
-									<Button type="button" variant="outline">
-										Cancel
-									</Button>
-								}
-							/>
-							<Button type="submit">Add source</Button>
-						</DialogFooter>
-					</form>
+					<SourceForm
+						key={available.join(",")}
+						kinds={available}
+						onSubmit={submit}
+					/>
 				)}
 			</DialogContent>
 		</Dialog>

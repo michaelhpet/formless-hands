@@ -1,7 +1,7 @@
 import { IconSearch } from "@tabler/icons-react";
 import { Link, useParams } from "@tanstack/react-router";
 import { cn } from "cn";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { DiffViewer } from "@/components/diff-viewer";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +16,7 @@ import {
 	EmptyTitle,
 } from "@/components/ui/empty";
 import { useTask } from "@/lib/api/tasks";
-import { mapApiTask } from "../../tasks-data";
+import { mapApiTask, type Task } from "../../tasks-data";
 import { FinishReviewMenu, type ReviewDecision } from "./finish-review-menu";
 import { getTaskReview, type TaskReview } from "./review-data";
 
@@ -24,54 +24,6 @@ export function TaskReviewPage() {
 	const { projectId, taskId } = useParams({ strict: false });
 	const liveTask = useTask(taskId);
 	const task = liveTask.data ? mapApiTask(liveTask.data) : undefined;
-	const [review, setReview] = useState<TaskReview | null>(null);
-	const [approved, setApproved] = useState(false);
-	const [replyingKey, setReplyingKey] = useState<string | null>(null);
-	const [replyBody, setReplyBody] = useState("");
-	const [notesClosed, setNotesClosed] = useState<ReadonlySet<string>>(
-		new Set(),
-	);
-	const [summary, setSummary] = useState<{
-		decision: ReviewDecision;
-		message: string;
-	} | null>(null);
-
-	useEffect(() => {
-		if (!task) {
-			setReview(null);
-			return;
-		}
-		const prRef = task.ref.startsWith("PR ")
-			? task.ref.split(" · ")[0]
-			: "None";
-		setReview(getTaskReview(task, prRef));
-		setApproved(false);
-		setReplyingKey(null);
-		setReplyBody("");
-		setNotesClosed(new Set());
-		setSummary(null);
-	}, [task]);
-
-	const toggleNotes = (key: string) => {
-		setNotesClosed((prev) => {
-			const next = new Set(prev);
-			if (next.has(key)) {
-				next.delete(key);
-			} else {
-				next.add(key);
-			}
-			return next;
-		});
-	};
-
-	const anyNotesOpen =
-		review?.files.some((file, fileIndex) =>
-			file.hunks.some(
-				(hunk, hunkIndex) =>
-					hunk.agentNotes.length > 0 &&
-					!notesClosed.has(`${fileIndex}:${hunkIndex}`),
-			),
-		) ?? false;
 
 	if (liveTask.isLoading) {
 		return (
@@ -81,7 +33,7 @@ export function TaskReviewPage() {
 		);
 	}
 
-	if (!task || !review) {
+	if (!task) {
 		return (
 			<div className="flex w-full flex-1 items-center justify-center px-5 py-16">
 				<Empty>
@@ -108,6 +60,52 @@ export function TaskReviewPage() {
 			</div>
 		);
 	}
+
+	return <TaskReviewView key={task.id} projectId={projectId} task={task} />;
+}
+
+function TaskReviewView({
+	projectId,
+	task,
+}: {
+	projectId: string | undefined;
+	task: Task;
+}) {
+	const prRef = task.ref.startsWith("PR ") ? task.ref.split(" · ")[0] : "None";
+	const [review, setReview] = useState<TaskReview>(() =>
+		getTaskReview(task, prRef),
+	);
+	const [approved, setApproved] = useState(false);
+	const [replyingKey, setReplyingKey] = useState<string | null>(null);
+	const [replyBody, setReplyBody] = useState("");
+	const [notesClosed, setNotesClosed] = useState<ReadonlySet<string>>(
+		new Set(),
+	);
+	const [summary, setSummary] = useState<{
+		decision: ReviewDecision;
+		message: string;
+	} | null>(null);
+
+	const toggleNotes = (key: string) => {
+		setNotesClosed((prev) => {
+			const next = new Set(prev);
+			if (next.has(key)) {
+				next.delete(key);
+			} else {
+				next.add(key);
+			}
+			return next;
+		});
+	};
+
+	const anyNotesOpen =
+		review.files.some((file, fileIndex) =>
+			file.hunks.some(
+				(hunk, hunkIndex) =>
+					hunk.agentNotes.length > 0 &&
+					!notesClosed.has(`${fileIndex}:${hunkIndex}`),
+			),
+		) ?? false;
 
 	const openComments = review.files.reduce(
 		(count, file) =>

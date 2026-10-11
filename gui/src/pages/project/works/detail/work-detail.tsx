@@ -1,7 +1,7 @@
 import { IconSearch } from "@tabler/icons-react";
 import { Link, useParams } from "@tanstack/react-router";
 import { cn } from "cn";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,12 @@ import {
 import { useWork, useWorks } from "@/lib/api/works";
 import { PriorityLabel, TaskStatusMark } from "../../tasks/task-utils";
 import { SOURCE_LABELS } from "../../tasks/tasks-data";
-import { INITIAL_WORKS, mapApiWork, type WorkStatus } from "../works-data";
+import {
+	INITIAL_WORKS,
+	mapApiWork,
+	type Work,
+	type WorkStatus,
+} from "../works-data";
 import { getWorkDetail, type TranscriptTone } from "./work-detail-data";
 
 const TONE_CLASS: Record<TranscriptTone, string> = {
@@ -90,15 +95,6 @@ export function WorkDetailPage() {
 		(liveWork.data ? mapApiWork(liveWork.data) : undefined) ??
 		INITIAL_WORKS.find((item) => item.id === Number(workId));
 	const allWorks = useMemo(() => [...siblings, ...INITIAL_WORKS], [siblings]);
-	const [detail, setDetail] = useState(() =>
-		work ? getWorkDetail(work, allWorks) : null,
-	);
-	const [live, setLive] = useState(work?.status === "running");
-
-	useEffect(() => {
-		setDetail(work ? getWorkDetail(work, allWorks) : null);
-		setLive(work?.status === "running");
-	}, [work, allWorks]);
 
 	if (liveWork.isLoading) {
 		return (
@@ -108,7 +104,7 @@ export function WorkDetailPage() {
 		);
 	}
 
-	if (!work || !detail) {
+	if (!work) {
 		return (
 			<div className="flex w-full flex-1 items-center justify-center px-5 py-16">
 				<Empty>
@@ -135,6 +131,28 @@ export function WorkDetailPage() {
 			</div>
 		);
 	}
+
+	return (
+		<WorkDetailView
+			key={`${work.id}:${allWorks.length}`}
+			projectId={projectId}
+			work={work}
+			allWorks={allWorks}
+		/>
+	);
+}
+
+function WorkDetailView({
+	projectId,
+	work,
+	allWorks,
+}: {
+	projectId: string | undefined;
+	work: Work;
+	allWorks: Work[];
+}) {
+	const [detail, setDetail] = useState(() => getWorkDetail(work, allWorks));
+	const [live, setLive] = useState(work.status === "running");
 
 	const status: WorkStatus = live
 		? "running"

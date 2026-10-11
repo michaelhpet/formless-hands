@@ -1,4 +1,6 @@
+import { useForm } from "@tanstack/react-form";
 import { useState } from "react";
+import * as z from "zod/mini";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -10,8 +12,22 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from "@/components/ui/dialog";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import {
+	Field,
+	FieldError,
+	FieldGroup,
+	FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { fieldErrors } from "@/lib/form";
+
+const workSchema = z.object({
+	branch: z
+		.string()
+		.check(
+			z.refine((value: string) => value.trim() !== "", "Branch is required"),
+		),
+});
 
 export function NewWorkDialog({
 	onCreate,
@@ -19,6 +35,15 @@ export function NewWorkDialog({
 	onCreate: (branch: string) => void;
 }) {
 	const [open, setOpen] = useState(false);
+	const form = useForm({
+		defaultValues: { branch: "" },
+		validators: { onSubmit: workSchema },
+		onSubmit: ({ value }) => {
+			onCreate(value.branch.trim());
+			form.reset();
+			setOpen(false);
+		},
+	});
 
 	return (
 		<Dialog open={open} onOpenChange={setOpen}>
@@ -34,27 +59,26 @@ export function NewWorkDialog({
 					className="flex flex-col gap-4"
 					onSubmit={(event) => {
 						event.preventDefault();
-						const data = new FormData(event.currentTarget);
-						const branch = String(data.get("branch") ?? "").trim();
-						if (!branch) {
-							return;
-						}
-						onCreate(branch);
-						event.currentTarget.reset();
-						setOpen(false);
+						void form.handleSubmit();
 					}}
 				>
 					<FieldGroup>
-						<Field>
-							<FieldLabel htmlFor="new-work-branch">Branch</FieldLabel>
-							<Input
-								id="new-work-branch"
-								name="branch"
-								required
-								placeholder="wt-short-description"
-								autoComplete="off"
-							/>
-						</Field>
+						<form.Field name="branch">
+							{(field) => (
+								<Field>
+									<FieldLabel htmlFor="new-work-branch">Branch</FieldLabel>
+									<Input
+										id="new-work-branch"
+										value={field.state.value}
+										onBlur={field.handleBlur}
+										onChange={(event) => field.handleChange(event.target.value)}
+										placeholder="wt-short-description"
+										autoComplete="off"
+									/>
+									<FieldError errors={fieldErrors(field.state.meta.errors)} />
+								</Field>
+							)}
+						</form.Field>
 					</FieldGroup>
 					<DialogFooter>
 						<DialogClose
@@ -64,7 +88,13 @@ export function NewWorkDialog({
 								</Button>
 							}
 						/>
-						<Button type="submit">Start work</Button>
+						<form.Subscribe selector={(state) => state.canSubmit}>
+							{(canSubmit) => (
+								<Button type="submit" disabled={!canSubmit}>
+									Start work
+								</Button>
+							)}
+						</form.Subscribe>
 					</DialogFooter>
 				</form>
 			</DialogContent>

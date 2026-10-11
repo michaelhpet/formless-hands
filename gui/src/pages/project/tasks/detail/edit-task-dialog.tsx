@@ -1,4 +1,6 @@
+import { useForm } from "@tanstack/react-form";
 import { useState } from "react";
+import * as z from "zod/mini";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -10,7 +12,12 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from "@/components/ui/dialog";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import {
+	Field,
+	FieldError,
+	FieldGroup,
+	FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
 	Select,
@@ -19,12 +26,24 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { fieldErrors } from "@/lib/form";
 import { PRIORITY_LABELS, type Task } from "../tasks-data";
 
 export interface EditTaskInput {
 	title: string;
 	priority: Task["priority"];
 }
+
+const prioritySchema = z.enum(["0", "1", "2", "3"]);
+
+const editTaskSchema = z.object({
+	title: z
+		.string()
+		.check(
+			z.refine((value: string) => value.trim() !== "", "Title is required"),
+		),
+	priority: prioritySchema,
+});
 
 export function EditTaskDialog({
 	title,
@@ -36,6 +55,17 @@ export function EditTaskDialog({
 	onSave: (input: EditTaskInput) => void;
 }) {
 	const [open, setOpen] = useState(false);
+	const form = useForm({
+		defaultValues: { title, priority: String(priority) },
+		validators: { onSubmit: editTaskSchema },
+		onSubmit: ({ value }) => {
+			onSave({
+				title: value.title.trim(),
+				priority: Number(value.priority) as Task["priority"],
+			});
+			setOpen(false);
+		},
+	});
 
 	return (
 		<Dialog open={open} onOpenChange={setOpen}>
@@ -49,51 +79,52 @@ export function EditTaskDialog({
 					className="flex flex-col gap-4"
 					onSubmit={(event) => {
 						event.preventDefault();
-						const data = new FormData(event.currentTarget);
-						const nextTitle = String(data.get("title") ?? "").trim();
-						if (!nextTitle) {
-							return;
-						}
-						const nextPriority = Number(data.get("priority"));
-						onSave({
-							title: nextTitle,
-							priority: [0, 1, 2, 3].includes(nextPriority)
-								? (nextPriority as Task["priority"])
-								: priority,
-						});
-						setOpen(false);
+						void form.handleSubmit();
 					}}
 				>
 					<FieldGroup>
-						<Field>
-							<FieldLabel htmlFor="edit-task-title">Title</FieldLabel>
-							<Input
-								id="edit-task-title"
-								name="title"
-								required
-								defaultValue={title}
-								autoComplete="off"
-							/>
-						</Field>
-						<Field>
-							<FieldLabel htmlFor="edit-task-priority">Priority</FieldLabel>
-							<Select
-								name="priority"
-								defaultValue={String(priority)}
-								items={PRIORITY_LABELS}
-							>
-								<SelectTrigger id="edit-task-priority" className="w-full">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									{Object.entries(PRIORITY_LABELS).map(([value, label]) => (
-										<SelectItem key={value} value={value}>
-											{label}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						</Field>
+						<form.Field name="title">
+							{(field) => (
+								<Field>
+									<FieldLabel htmlFor="edit-task-title">Title</FieldLabel>
+									<Input
+										id="edit-task-title"
+										value={field.state.value}
+										onBlur={field.handleBlur}
+										onChange={(event) => field.handleChange(event.target.value)}
+										autoComplete="off"
+									/>
+									<FieldError errors={fieldErrors(field.state.meta.errors)} />
+								</Field>
+							)}
+						</form.Field>
+						<form.Field name="priority">
+							{(field) => (
+								<Field>
+									<FieldLabel htmlFor="edit-task-priority">Priority</FieldLabel>
+									<Select
+										value={field.state.value}
+										onValueChange={(value) => {
+											if (value !== null) {
+												field.handleChange(value);
+											}
+										}}
+										items={PRIORITY_LABELS}
+									>
+										<SelectTrigger id="edit-task-priority" className="w-full">
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent>
+											{Object.entries(PRIORITY_LABELS).map(([value, label]) => (
+												<SelectItem key={value} value={value}>
+													{label}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
+								</Field>
+							)}
+						</form.Field>
 					</FieldGroup>
 					<DialogFooter>
 						<DialogClose
@@ -103,7 +134,13 @@ export function EditTaskDialog({
 								</Button>
 							}
 						/>
-						<Button type="submit">Save changes</Button>
+						<form.Subscribe selector={(state) => state.canSubmit}>
+							{(canSubmit) => (
+								<Button type="submit" disabled={!canSubmit}>
+									Save changes
+								</Button>
+							)}
+						</form.Subscribe>
 					</DialogFooter>
 				</form>
 			</DialogContent>
