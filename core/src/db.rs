@@ -1,4 +1,4 @@
-use crate::models::{NewProject, NewTask, NewTaskSource, Project, Task, TaskSource};
+use crate::models::{NewProject, NewTask, NewTaskSource, Project, Task, TaskSource, Work};
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 use std::fs;
@@ -111,14 +111,18 @@ fn task_row(r: &rusqlite::Row) -> rusqlite::Result<Task> {
         source_kind: r.get(3)?,
         external_id: r.get(4)?,
         title: r.get(5)?,
-        status: r.get(6)?,
-        priority: r.get(7)?,
-        pr_number: r.get(8)?,
+        body: r.get(6)?,
+        labels: r.get(7)?,
+        status: r.get(8)?,
+        priority: r.get(9)?,
+        pr_number: r.get(10)?,
+        branch: r.get(11)?,
+        attempts: r.get(12)?,
     })
 }
 
 const TASK_COLS: &str = "t.id, t.project_id, t.task_source_id, s.kind, t.external_id,
-    t.title, t.status, t.priority, t.pr_number";
+    t.title, t.body, t.labels, t.status, t.priority, t.pr_number, t.branch, t.attempts";
 
 pub fn list_tasks(
     conn: &Connection,
@@ -146,6 +150,50 @@ pub fn get_task(conn: &Connection, id: i64) -> Result<Option<Task>> {
     );
     let mut st = conn.prepare(&sql)?;
     let mut rows = st.query_map([id], task_row)?;
+    Ok(rows.next().transpose()?)
+}
+
+fn work_row(r: &rusqlite::Row) -> rusqlite::Result<Work> {
+    Ok(Work {
+        id: r.get(0)?,
+        task_id: r.get(1)?,
+        task_external_id: r.get(2)?,
+        task_title: r.get(3)?,
+        project_id: r.get(4)?,
+        worktree_path: r.get(5)?,
+        branch: r.get(6)?,
+        started_at: r.get(7)?,
+        finished_at: r.get(8)?,
+        exit_code: r.get(9)?,
+        log_path: r.get(10)?,
+    })
+}
+
+pub fn list_works(
+    conn: &Connection,
+    project_id: Option<i64>,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<Work>> {
+    let mut st = conn.prepare(
+        "SELECT w.id, w.task_id, t.external_id, t.title, t.project_id,
+           w.worktree_path, w.branch, w.started_at, w.finished_at, w.exit_code, w.log_path
+         FROM works w JOIN tasks t ON t.id = w.task_id
+         WHERE (?1 IS NULL OR t.project_id = ?1)
+         ORDER BY w.id DESC LIMIT ?2 OFFSET ?3",
+    )?;
+    let rows = st.query_map((project_id, limit, offset), work_row)?;
+    Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+}
+
+pub fn get_work(conn: &Connection, id: i64) -> Result<Option<Work>> {
+    let mut st = conn.prepare(
+        "SELECT w.id, w.task_id, t.external_id, t.title, t.project_id,
+           w.worktree_path, w.branch, w.started_at, w.finished_at, w.exit_code, w.log_path
+         FROM works w JOIN tasks t ON t.id = w.task_id
+         WHERE w.id = ?1",
+    )?;
+    let mut rows = st.query_map([id], work_row)?;
     Ok(rows.next().transpose()?)
 }
 

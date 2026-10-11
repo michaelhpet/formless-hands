@@ -67,7 +67,7 @@ pub fn parse_set(set: &[String]) -> Result<Vec<(String, String)>> {
 }
 
 pub fn is_duplicate(conn: &Connection, planned: &PlannedSource) -> Result<bool> {
-    Ok(db::list_sources(&conn, Some(planned.project_id))?
+    Ok(db::list_sources(conn, Some(planned.project_id))?
         .into_iter()
         .any(|s| s.kind == planned.kind && s.config_json == planned.config_json))
 }

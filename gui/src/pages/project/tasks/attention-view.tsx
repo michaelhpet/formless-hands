@@ -14,7 +14,7 @@ export function AttentionView({ tasks }: { tasks: Task[] }) {
 					<IconCheck className="size-4" />
 				</span>
 				<p className="text-foreground">
-					All clear — nothing needs a human right now.
+					Nothing needs your attention right now.
 				</p>
 			</div>
 		);

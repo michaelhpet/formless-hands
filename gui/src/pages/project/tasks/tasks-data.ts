@@ -1,3 +1,5 @@
+import type { Task as TaskRecord } from "@/lib/api/tasks";
+
 export type TaskStatus =
 	| "open"
 	| "triaged"
@@ -16,10 +18,14 @@ export interface Task {
 	externalId: string | null;
 	source: TaskSourceKind;
 	title: string;
+	body: string;
+	labels: string[];
 	status: TaskStatus;
 	priority: 0 | 1 | 2 | 3;
 	meta: string;
 	ref: string;
+	branch: string;
+	attempts: number;
 	age: string;
 }
 
@@ -118,6 +124,10 @@ export const INITIAL_TASKS: Task[] = [
 		externalId: "LIN-144",
 		source: "linear",
 		title: "Migrate daemon state file",
+		body: "",
+		labels: [],
+		branch: "None",
+		attempts: 0,
 		status: "blocked",
 		priority: 0,
 		meta: "Blocked · waiting 4d",
@@ -129,6 +139,10 @@ export const INITIAL_TASKS: Task[] = [
 		externalId: "LIN-150",
 		source: "linear",
 		title: "Add retry with backoff to source poller",
+		body: "",
+		labels: [],
+		branch: "None",
+		attempts: 0,
 		status: "open",
 		priority: 1,
 		meta: "Open · 6d old",
@@ -140,6 +154,10 @@ export const INITIAL_TASKS: Task[] = [
 		externalId: "LIN-149",
 		source: "linear",
 		title: "Wire task priority into queue order",
+		body: "",
+		labels: [],
+		branch: "None",
+		attempts: 0,
 		status: "triaged",
 		priority: 1,
 		meta: "Triaged · instructions set",
@@ -151,6 +169,10 @@ export const INITIAL_TASKS: Task[] = [
 		externalId: "LIN-142",
 		source: "linear",
 		title: "Fix auth refresh loop",
+		body: "",
+		labels: [],
+		branch: "None",
+		attempts: 0,
 		status: "in-progress",
 		priority: 1,
 		meta: "wt-auth-fix · try 2 · 12m",
@@ -162,6 +184,10 @@ export const INITIAL_TASKS: Task[] = [
 		externalId: "GH-881",
 		source: "github",
 		title: "Implement task table for GUI",
+		body: "",
+		labels: [],
+		branch: "None",
+		attempts: 0,
 		status: "completed",
 		priority: 1,
 		meta: "wt-gui-table · completed · 28m",
@@ -173,6 +199,10 @@ export const INITIAL_TASKS: Task[] = [
 		externalId: "LIN-151",
 		source: "linear",
 		title: "Triage uncategorized linear imports",
+		body: "",
+		labels: [],
+		branch: "None",
+		attempts: 0,
 		status: "needs-context",
 		priority: 2,
 		meta: "Needs context · no body",
@@ -184,6 +214,10 @@ export const INITIAL_TASKS: Task[] = [
 		externalId: "LIN-139",
 		source: "linear",
 		title: "Add backoff to source poller",
+		body: "",
+		labels: [],
+		branch: "None",
+		attempts: 0,
 		status: "in-review",
 		priority: 2,
 		meta: "PR #412 · 2 comments",
@@ -195,6 +229,10 @@ export const INITIAL_TASKS: Task[] = [
 		externalId: "GH-893",
 		source: "github",
 		title: "Add empty states for docs tab",
+		body: "",
+		labels: [],
+		branch: "None",
+		attempts: 0,
 		status: "triaged",
 		priority: 2,
 		meta: "Triaged · 1d old",
@@ -206,6 +244,10 @@ export const INITIAL_TASKS: Task[] = [
 		externalId: "LIN-138",
 		source: "linear",
 		title: "Cache poller cursor per source",
+		body: "",
+		labels: [],
+		branch: "None",
+		attempts: 0,
 		status: "merged",
 		priority: 2,
 		meta: "merged · PR #408",
@@ -217,6 +259,10 @@ export const INITIAL_TASKS: Task[] = [
 		externalId: "GH-895",
 		source: "github",
 		title: "Document source config schema",
+		body: "",
+		labels: [],
+		branch: "None",
+		attempts: 0,
 		status: "open",
 		priority: 3,
 		meta: "Open · 2d old",
@@ -228,6 +274,10 @@ export const INITIAL_TASKS: Task[] = [
 		externalId: "GH-870",
 		source: "github",
 		title: "Update CLI help text",
+		body: "",
+		labels: [],
+		branch: "None",
+		attempts: 0,
 		status: "in-review",
 		priority: 3,
 		meta: "PR #87 · 1 comment",
@@ -239,6 +289,10 @@ export const INITIAL_TASKS: Task[] = [
 		externalId: "GH-865",
 		source: "github",
 		title: "Fix watcher debounce interval",
+		body: "",
+		labels: [],
+		branch: "None",
+		attempts: 0,
 		status: "closed",
 		priority: 3,
 		meta: "Closed · no PR",
@@ -259,15 +313,7 @@ const API_STATUSES: TaskStatus[] = [
 	"closed",
 ];
 
-export function mapApiTask(task: {
-	external_id: string | null;
-	id: number;
-	source_kind: string | null;
-	title: string;
-	status: string;
-	priority: number;
-	pr_number: number | null;
-}): Task {
+export function mapApiTask(task: TaskRecord): Task {
 	const status: TaskStatus = API_STATUSES.includes(task.status as TaskStatus)
 		? (task.status as TaskStatus)
 		: "open";
@@ -287,15 +333,30 @@ export function mapApiTask(task: {
 		task.pr_number !== null
 			? `PR #${task.pr_number}`
 			: (task.external_id ?? "None");
+	let labels: string[] = [];
+	try {
+		const parsed: unknown = JSON.parse(task.labels ?? "[]");
+		if (Array.isArray(parsed)) {
+			labels = parsed.filter(
+				(label): label is string => typeof label === "string",
+			);
+		}
+	} catch {
+		labels = [];
+	}
 	return {
 		id: String(task.id),
 		externalId: task.external_id,
 		source,
 		title: task.title,
+		body: task.body ?? "",
+		labels,
 		status,
 		priority,
 		meta: `${STATUS_LABELS[status]} · ${ref}`,
 		ref,
+		branch: task.branch ? task.branch : "None",
+		attempts: task.attempts ?? 0,
 		age: "",
 	};
 }

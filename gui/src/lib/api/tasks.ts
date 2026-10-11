@@ -10,9 +10,13 @@ export interface Task {
 	source_kind: string | null;
 	external_id: string | null;
 	title: string;
+	body?: string;
+	labels?: string;
 	status: string;
 	priority: number;
 	pr_number: number | null;
+	branch?: string;
+	attempts?: number;
 }
 
 export interface GetTasksParams {

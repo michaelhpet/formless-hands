@@ -1,3 +1,5 @@
+import type { Work as WorkRecord } from "@/lib/api/works";
+
 export type WorkStatus = "running" | "success" | "failed";
 
 export interface Work {
@@ -34,6 +36,38 @@ export const STATUS_LABELS: Record<WorkStatusFilter, string> = {
 	success: "Success",
 	failed: "Failed",
 };
+
+function parseStamp(stamp: string): number {
+	return Date.parse(`${stamp.replace(" ", "T")}Z`);
+}
+
+export function mapApiWork(work: WorkRecord): Work {
+	const status: WorkStatus =
+		work.finished_at === null
+			? "running"
+			: work.exit_code === 0
+				? "success"
+				: "failed";
+	const start = parseStamp(work.started_at);
+	const end =
+		work.finished_at === null ? Date.now() : parseStamp(work.finished_at);
+	const durationMin =
+		Number.isFinite(start) && Number.isFinite(end) && end >= start
+			? Math.max(0, Math.round((end - start) / 60000))
+			: 0;
+	return {
+		id: work.id,
+		taskRef: work.task_external_id ?? `#${work.task_id}`,
+		taskTitle: work.task_title,
+		branch: work.branch,
+		worktree: work.worktree_path,
+		started: work.started_at.slice(5, 16),
+		duration: work.finished_at === null ? "live" : `${durationMin}m`,
+		durationMin,
+		exitCode: work.exit_code,
+		status,
+	};
+}
 
 export function toggleSort(current: WorkSort, key: WorkSortKey): WorkSort {
 	if (current === key) {

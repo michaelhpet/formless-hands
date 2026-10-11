@@ -160,18 +160,26 @@ function fallbackDetail(task: Task): TaskDetail {
 		priority: task.priority,
 		openedAge: age,
 		updatedAge: age,
-		lead: "No description yet.",
-		body: [],
+		lead: task.title,
+		body:
+			task.body.trim() === ""
+				? []
+				: task.body.split(/\n\n+/).map((paragraph) => paragraph.trim()),
 		criteria: [],
 		attachments: [],
 		reviews: [],
 		notes: [],
 		works: [],
-		branch: !isPr && task.ref !== "None" ? task.ref.split(" · ")[0] : "None",
+		branch:
+			task.branch !== "None"
+				? task.branch
+				: !isPr && task.ref !== "None"
+					? task.ref.split(" · ")[0]
+					: "None",
 		worktree: "None",
 		pr: isPr ? task.ref : "None",
-		labels: "None",
-		attempts: "None",
+		labels: task.labels.length > 0 ? task.labels.join(", ") : "None",
+		attempts: task.attempts > 0 ? String(task.attempts) : "None",
 		locked: "None",
 		created: age,
 		updated: age,

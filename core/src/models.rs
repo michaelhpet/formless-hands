@@ -70,9 +70,13 @@ pub struct Task {
     pub source_kind: Option<String>,
     pub external_id: Option<String>,
     pub title: String,
+    pub body: String,
+    pub labels: String,
     pub status: String,
     pub priority: i64,
     pub pr_number: Option<i64>,
+    pub branch: String,
+    pub attempts: i64,
 }
 
 #[derive(Debug)]
@@ -113,4 +117,20 @@ pub mod status {
     pub fn valid(s: &str) -> bool {
         ALL.contains(&s)
     }
+}
+
+#[derive(Debug, Serialize)]
+#[allow(dead_code)]
+pub struct Work {
+    pub id: i64,
+    pub task_id: i64,
+    pub task_external_id: Option<String>,
+    pub task_title: String,
+    pub project_id: i64,
+    pub worktree_path: String,
+    pub branch: String,
+    pub started_at: String,
+    pub finished_at: Option<String>,
+    pub exit_code: Option<i64>,
+    pub log_path: String,
 }

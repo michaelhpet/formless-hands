@@ -40,6 +40,8 @@ pub fn router() -> Router {
         )
         .route("/api/tasks", get(api_tasks).post(api_task_create))
         .route("/api/tasks/{id}", get(api_task).patch(api_task_update))
+        .route("/api/works", get(api_works))
+        .route("/api/works/{id}", get(api_work))
         .route("/", get(index))
         .route("/{*path}", get(asset))
 }
@@ -319,6 +321,47 @@ async fn api_task_update(
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?
         .ok_or((StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
     Ok(Json(task))
+}
+
+#[derive(Deserialize)]
+struct WorkQuery {
+    project: Option<String>,
+    limit: Option<i64>,
+    page: Option<i64>,
+}
+
+async fn api_works(
+    Query(q): Query<WorkQuery>,
+) -> Result<Json<Vec<models::Work>>, StatusCode> {
+    let conn = db::connect().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let project_id = match q.project {
+        Some(name) => match db::get_project_by_name(&conn, &name)
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        {
+            Some(r) => Some(r.id),
+            None => return Err(StatusCode::NOT_FOUND),
+        },
+        None => None,
+    };
+    let limit = q.limit.unwrap_or(20);
+    if !(1..=500).contains(&limit) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let page = q.page.unwrap_or(1);
+    if page < 1 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    db::list_works(&conn, project_id, limit, (page - 1) * limit)
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn api_work(Path(id): Path<i64>) -> Result<Json<models::Work>, StatusCode> {
+    let conn = db::connect().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    match db::get_work(&conn, id).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? {
+        Some(w) => Ok(Json(w)),
+        None => Err(StatusCode::NOT_FOUND),
+    }
 }
 
 fn content_type(path: &str) -> &'static str {

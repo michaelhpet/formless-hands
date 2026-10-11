@@ -1,7 +1,7 @@
 import { IconSearch } from "@tabler/icons-react";
 import { Link, useParams } from "@tanstack/react-router";
 import { cn } from "cn";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -14,9 +14,10 @@ import {
 	EmptyMedia,
 	EmptyTitle,
 } from "@/components/ui/empty";
+import { useWork, useWorks } from "@/lib/api/works";
 import { PriorityLabel, TaskStatusMark } from "../../tasks/task-utils";
 import { SOURCE_LABELS } from "../../tasks/tasks-data";
-import { INITIAL_WORKS, type WorkStatus } from "../works-data";
+import { INITIAL_WORKS, mapApiWork, type WorkStatus } from "../works-data";
 import { getWorkDetail, type TranscriptTone } from "./work-detail-data";
 
 const TONE_CLASS: Record<TranscriptTone, string> = {
@@ -79,16 +80,33 @@ function TranscriptCard({
 
 export function WorkDetailPage() {
 	const { projectId, workId } = useParams({ strict: false });
-	const work = INITIAL_WORKS.find((item) => item.id === Number(workId));
+	const liveWork = useWork(workId);
+	const liveWorks = useWorks({ project: projectId, limit: 500 });
+	const siblings = useMemo(
+		() => (liveWorks.data ?? []).map(mapApiWork),
+		[liveWorks.data],
+	);
+	const work =
+		(liveWork.data ? mapApiWork(liveWork.data) : undefined) ??
+		INITIAL_WORKS.find((item) => item.id === Number(workId));
+	const allWorks = useMemo(() => [...siblings, ...INITIAL_WORKS], [siblings]);
 	const [detail, setDetail] = useState(() =>
-		work ? getWorkDetail(work, INITIAL_WORKS) : null,
+		work ? getWorkDetail(work, allWorks) : null,
 	);
 	const [live, setLive] = useState(work?.status === "running");
 
 	useEffect(() => {
-		setDetail(work ? getWorkDetail(work, INITIAL_WORKS) : null);
+		setDetail(work ? getWorkDetail(work, allWorks) : null);
 		setLive(work?.status === "running");
-	}, [work]);
+	}, [work, allWorks]);
+
+	if (liveWork.isLoading) {
+		return (
+			<div className="flex w-full flex-1 items-center justify-center px-5 py-16">
+				<p className="text-muted-foreground">Loading work…</p>
+			</div>
+		);
+	}
 
 	if (!work || !detail) {
 		return (

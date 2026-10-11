@@ -233,7 +233,7 @@ pub fn find_existing(conn: &Connection, planned: &PlannedProject) -> Result<Opti
 
 pub fn insert_planned(conn: &Connection, planned: &PlannedProject) -> Result<Project> {
     let id = db::insert_project(
-        &conn,
+        conn,
         &crate::models::NewProject {
             name: &planned.name,
             remote_url: &planned.remote_url,

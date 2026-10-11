@@ -1,8 +1,8 @@
 import { Combobox as ComboboxPrimitive } from "@base-ui/react";
 import { IconSearch } from "@tabler/icons-react";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { cn } from "cn";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -33,16 +33,15 @@ import {
 } from "@/components/ui/input-group";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useDebounce } from "@/hooks/use-debounce";
+import { useWorks } from "@/lib/api/works";
 import type { WorksSearch } from "@/router";
-import { NewWorkDialog, type NewWorkInput } from "./new-work-dialog";
 import {
 	DEFAULT_SORT,
-	INITIAL_WORKS,
+	mapApiWork,
 	STATUS_FILTERS,
 	STATUS_LABELS,
 	sortWorks,
 	summarizeWorks,
-	type Work,
 	type WorkStatusFilter,
 } from "./works-data";
 import { WorksTableView } from "./works-table-view";
@@ -74,13 +73,15 @@ function StatCard({
 }
 
 export function WorksPage() {
-	const [works, setWorks] = useState<Work[]>(INITIAL_WORKS);
+	const { projectId } = useParams({ strict: false });
 	const navigate = useNavigate();
 	const search = useSearch({ from: "/$projectId/works" });
 	const query = search.q ?? "";
 	const status: WorkStatusFilter = search.status ?? "all";
 	const sort = search.sort ?? DEFAULT_SORT;
 	const task = search.task ?? "all";
+	const worksQuery = useWorks({ project: projectId, limit: 200 });
+	const works = (worksQuery.data ?? []).map(mapApiWork);
 
 	const updateSearch = (patch: Partial<WorksSearch>) => {
 		navigate({
@@ -138,24 +139,6 @@ export function WorksPage() {
 		sort,
 	);
 
-	const createWork = (input: NewWorkInput) => {
-		setWorks((prev) => [
-			{
-				id: prev.length > 0 ? Math.max(...prev.map((w) => w.id)) + 1 : 1,
-				taskRef: input.taskRef,
-				taskTitle: input.taskTitle,
-				branch: input.branch,
-				worktree: `~/${input.branch}`,
-				started: "now",
-				duration: "0m",
-				durationMin: 0,
-				exitCode: null,
-				status: "running",
-			},
-			...prev,
-		]);
-	};
-
 	const filtering = query.trim() !== "" || status !== "all" || task !== "all";
 	const clearFilters = () => {
 		updateSearch({
@@ -203,9 +186,19 @@ export function WorksPage() {
 							</ComboboxList>
 						</ComboboxContent>
 					</Combobox>
-					<NewWorkDialog onCreate={createWork} />
 				</div>
 			</div>
+			{worksQuery.isLoading ? (
+				<p className="text-muted-foreground">Loading works…</p>
+			) : null}
+			{worksQuery.isError ? (
+				<p className="text-destructive">
+					Couldn't load works:{" "}
+					{worksQuery.error instanceof Error
+						? worksQuery.error.message
+						: "unknown error"}
+				</p>
+			) : null}
 
 			<div className="grid w-full grid-cols-2 gap-2.5 xl:grid-cols-5">
 				<StatCard
