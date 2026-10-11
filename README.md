@@ -6,8 +6,7 @@ task sources on a schedule, triages tasks, runs worker agents (`opencode` CLI) i
 Work is scoped per project. Each project attaches one repository plus any
 number of task sources (Linear, GitHub Issues, etc.) that are polled regularly
 to populate the task list. Tasks can also be added manually: Manage them
-via `formless-hands project add|list|remove` and `formless-hands source add|list|remove|enable|disable`. `formless-hands project add` takes the SSH clone URL; a
-missing checkout is cloned to `~/Work/<name>` with the system `git` setup.
+via `formless-hands project add|list|remove` and `formless-hands source add|list|remove|enable|disable`. `formless-hands project add` takes an SSH clone URL or a local directory; a missing checkout is cloned to `~/Work/<name>` with the system `git` setup.
 
 One binary, two faces: `formless-hands run` is the background service, while `formless-hands project|source|task ...` are short-lived terminal commands against the same SQLite DB.
 
@@ -15,11 +14,14 @@ One binary, two faces: `formless-hands run` is the background service, while `fo
 
 ```text
 formless-hands run
-formless-hands project add <ssh-url> [--name] [--path] | list | remove <name>
-formless-hands source add --project <name> --kind <linear|github> [-s key=value ...]
-             | list [--project] | remove <id> | enable <id> | disable <id>
+formless-hands project add <ssh-url|local-path> [--name] [--path] | list | remove <name>
+formless-hands source add --project <name> --kind <linear|github> [-s key=value ... | --url <linear-link>]
+             | list --project <name> | remove <id> --project <name>
+             | enable <id> --project <name> | disable <id> --project <name>
+             | poll --project <name> [id]
 formless-hands task create <title> --project <name> [--body] [--priority]
-             | list [--project] [--status] [--limit] | update <id> [--status] [--priority] [--instructions]
+             | list --project <name> [--status] [--limit]
+             | update <id> --project <name> [--status] [--priority] [--instructions]
 ```
 
 ## Development Setup

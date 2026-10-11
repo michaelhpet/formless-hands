@@ -23,6 +23,9 @@ CREATE TABLE IF NOT EXISTS task_sources (
   last_polled_at TEXT,
   cursor      TEXT NOT NULL DEFAULT '',
   config_json TEXT NOT NULL DEFAULT '{}',
+  backoff_until TEXT NOT NULL DEFAULT '',
+  backoff_count INTEGER NOT NULL DEFAULT 0,
+  last_error  TEXT NOT NULL DEFAULT '',
   created_at  TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(project_id, kind, config_json)
@@ -44,10 +47,13 @@ CREATE TABLE IF NOT EXISTS tasks (
   branch        TEXT NOT NULL DEFAULT '',
   attempts      INTEGER NOT NULL DEFAULT 0,
   last_error    TEXT NOT NULL DEFAULT '',
+  backoff_until TEXT NOT NULL DEFAULT '',
+  backoff_count INTEGER NOT NULL DEFAULT 0,
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(task_source_id, external_id)
 );
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE TABLE IF NOT EXISTS works (
   id          INTEGER PRIMARY KEY,
   task_id     INTEGER NOT NULL REFERENCES tasks(id),
@@ -69,12 +75,24 @@ CREATE TABLE IF NOT EXISTS review_comments (
 );
 "#;
 
-pub fn connect() -> Result<Connection> {
-    let path = crate::config::expand_home("~/.local/share/formless-hands/database.sqlite");
-    if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
+pub fn db_path() -> std::path::PathBuf {
+    match std::env::var("FH_DB_PATH") {
+        Ok(p) if !p.trim().is_empty() => std::path::PathBuf::from(p),
+        _ => crate::config::expand_home("~/.local/share/formless-hands/database.sqlite"),
     }
-    let conn = Connection::open(&path)?;
+}
+
+pub fn connect() -> Result<Connection> {
+    connect_at(&db_path())
+}
+
+pub fn connect_at(path: &std::path::Path) -> Result<Connection> {
+    if let Some(dir) = path.parent() {
+        if !dir.as_os_str().is_empty() {
+            fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
+        }
+    }
+    let conn = Connection::open(path)?;
     conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;")?;
     migrate(&conn)?;
     Ok(conn)
@@ -112,6 +130,12 @@ pub fn list_tasks(
         })
     })?;
     Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+}
+
+pub fn task_project_id(conn: &Connection, id: i64) -> Result<Option<i64>> {
+    let mut st = conn.prepare("SELECT project_id FROM tasks WHERE id = ?1")?;
+    let mut rows = st.query_map([id], |r| r.get(0))?;
+    Ok(rows.next().transpose()?)
 }
 
 pub fn insert_task(conn: &Connection, task: &NewTask) -> Result<i64> {
@@ -210,6 +234,13 @@ pub fn get_project_by_name(conn: &Connection, name: &str) -> Result<Option<Proje
     Ok(rows.next().transpose()?)
 }
 
+pub fn get_project_by_local_path(conn: &Connection, local_path: &str) -> Result<Option<Project>> {
+    let sql = format!("SELECT {PROJECT_COLS} FROM projects WHERE local_path = ?1");
+    let mut st = conn.prepare(&sql)?;
+    let mut rows = st.query_map([local_path], project_row)?;
+    Ok(rows.next().transpose()?)
+}
+
 pub fn get_project_by_remote(conn: &Connection, remote_url: &str) -> Result<Option<Project>> {
     let sql = format!("SELECT {PROJECT_COLS} FROM projects WHERE remote_url = ?1");
     let mut st = conn.prepare(&sql)?;
@@ -246,11 +277,15 @@ fn source_row(r: &rusqlite::Row) -> rusqlite::Result<TaskSource> {
         last_polled_at: r.get(4)?,
         cursor: r.get(5)?,
         config_json: r.get(6)?,
+        backoff_until: r.get(7)?,
+        backoff_count: r.get(8)?,
+        last_error: r.get(9)?,
     })
 }
 
 const SOURCE_COLS: &str =
-    "id, project_id, kind, enabled, last_polled_at, cursor, config_json";
+    "id, project_id, kind, enabled, last_polled_at, cursor, config_json,
+     backoff_until, backoff_count, last_error";
 
 pub fn insert_source(conn: &Connection, source: &NewTaskSource) -> Result<i64> {
     conn.execute(
@@ -288,4 +323,149 @@ pub fn set_source_enabled(conn: &Connection, id: i64, enabled: bool) -> Result<b
 
 pub fn remove_source(conn: &Connection, id: i64) -> Result<bool> {
     Ok(conn.execute("DELETE FROM task_sources WHERE id = ?1", [id])? > 0)
+}
+
+pub fn get_source(conn: &Connection, id: i64) -> Result<Option<TaskSource>> {
+    let sql = format!("SELECT {SOURCE_COLS} FROM task_sources WHERE id = ?1");
+    let mut st = conn.prepare(&sql)?;
+    let mut rows = st.query_map([id], source_row)?;
+    Ok(rows.next().transpose()?)
+}
+
+pub fn set_source_polled(conn: &Connection, id: i64, cursor: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE task_sources SET last_polled_at = datetime('now'), cursor = ?1,
+           backoff_until = '', backoff_count = 0, last_error = '',
+           updated_at = datetime('now') WHERE id = ?2",
+        rusqlite::params![cursor, id],
+    )?;
+    Ok(())
+}
+
+pub fn set_source_backoff(conn: &Connection, id: i64, until: &str, err: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE task_sources SET backoff_until = ?1, backoff_count = backoff_count + 1,
+           last_error = ?2, updated_at = datetime('now') WHERE id = ?3",
+        rusqlite::params![until, err, id],
+    )?;
+    Ok(())
+}
+
+pub fn set_source_error(conn: &Connection, id: i64, err: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE task_sources SET last_error = ?1, backoff_until = '', backoff_count = 0,
+           updated_at = datetime('now') WHERE id = ?2",
+        rusqlite::params![err, id],
+    )?;
+    Ok(())
+}
+
+pub struct PolledTask<'a> {
+    pub project_id: i64,
+    pub task_source_id: i64,
+    pub external_id: &'a str,
+    pub url: &'a str,
+    pub title: &'a str,
+    pub body: &'a str,
+    pub priority: i64,
+    pub labels_json: &'a str,
+}
+
+pub fn upsert_polled_task(conn: &Connection, task: &PolledTask) -> Result<()> {
+    conn.execute(
+        "INSERT INTO tasks (project_id, task_source_id, external_id, url, title, body, priority, labels)
+          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+          ON CONFLICT(task_source_id, external_id) DO UPDATE SET
+            url = excluded.url, title = excluded.title, body = excluded.body,
+            priority = excluded.priority, labels = excluded.labels,
+            updated_at = datetime('now')",
+        rusqlite::params![
+            task.project_id,
+            task.task_source_id,
+            task.external_id,
+            task.url,
+            task.title,
+            task.body,
+            task.priority,
+            task.labels_json
+        ],
+    )?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_db() -> Connection {
+        let path = std::env::temp_dir().join(format!(
+            "fh-test-{}-{}.sqlite",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        connect_at(&path).expect("test db")
+    }
+
+    #[test]
+    fn repoll_updates_content_but_keeps_local_status() {
+        let conn = test_db();
+        conn.execute(
+            "INSERT INTO projects (name, remote_url) VALUES ('p', 'file:///p')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO task_sources (project_id, kind, config_json) VALUES (1, 'linear', '{}')",
+            [],
+        )
+        .unwrap();
+        fn task(title: &str) -> PolledTask<'_> {
+            PolledTask {
+                project_id: 1,
+                task_source_id: 1,
+                external_id: "ENG-1",
+                url: "https://linear.app/i/1",
+                title,
+                body: "b",
+                priority: 3,
+                labels_json: "[\"bug\"]",
+            }
+        }
+        upsert_polled_task(&conn, &task("first")).unwrap();
+        conn.execute("UPDATE tasks SET status = 'in-progress' WHERE id = 1", [])
+            .unwrap();
+        upsert_polled_task(&conn, &task("second")).unwrap();
+        let (title, status): (String, String) = conn
+            .query_row("SELECT title, status FROM tasks WHERE id = 1", [], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(title, "second");
+        assert_eq!(status, "in-progress");
+    }
+
+    #[test]
+    fn source_backoff_roundtrip() {
+        let conn = test_db();
+        conn.execute(
+            "INSERT INTO projects (name, remote_url) VALUES ('p', 'file:///p')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO task_sources (project_id, kind, config_json) VALUES (1, 'linear', '{}')",
+            [],
+        )
+        .unwrap();
+        set_source_backoff(&conn, 1, "2099-01-01T00:00:00Z", "busy").unwrap();
+        let s = list_enabled_sources(&conn).unwrap().pop().unwrap();
+        assert_eq!(s.backoff_count, 1);
+        assert_eq!(s.last_error, "busy");
+        set_source_polled(&conn, 1, "abc").unwrap();
+        let s = list_enabled_sources(&conn).unwrap().pop().unwrap();
+        assert_eq!(s.backoff_count, 0);
+        assert_eq!(s.backoff_until, "");
+        assert_eq!(s.last_error, "");
+        assert_eq!(s.cursor, "abc");
+    }
 }

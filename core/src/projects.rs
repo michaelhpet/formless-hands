@@ -41,6 +41,53 @@ fn split_host_path(url: &str) -> Result<(String, String)> {
     Ok((host, path.to_string()))
 }
 
+pub enum RepoRef {
+    Remote(String),
+    Local(PathBuf),
+}
+
+pub fn classify_repo_arg(arg: &str) -> Result<RepoRef> {
+    let path = Path::new(arg);
+    if path.is_dir() {
+        let abs = path
+            .canonicalize()
+            .with_context(|| format!("resolve local directory '{arg}'"))?;
+        return Ok(RepoRef::Local(abs));
+    }
+    Ok(RepoRef::Remote(arg.to_string()))
+}
+
+pub fn derive_local_name(dir: &Path) -> Result<String> {
+    let stem = dir
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_string();
+    if !valid_name(&stem) {
+        anyhow::bail!("directory name '{stem}' is not a valid project name — pass --name explicitly");
+    }
+    Ok(stem)
+}
+
+pub async fn assert_repo(dir: &Path) -> Result<()> {
+    let (is_repo, _) = git(&["rev-parse", "--git-dir"], Some(dir)).await?;
+    if !is_repo {
+        anyhow::bail!("'{}' is not a git repository — init one or pass an SSH clone URL", dir.display());
+    }
+    Ok(())
+}
+
+pub async fn origin_of(dir: &Path) -> String {
+    match git(&["remote", "get-url", "origin"], Some(dir)).await {
+        Ok((true, origin)) => origin,
+        _ => String::new(),
+    }
+}
+
+pub fn is_local_remote(remote_url: &str) -> bool {
+    Path::new(remote_url).is_absolute()
+}
+
 pub fn derive_name(url: &str) -> Result<String> {
     let (_, path) = split_host_path(url)?;
     let stem = path
@@ -135,11 +182,15 @@ pub async fn ensure_local(conn: &Connection, project: &Project) -> Result<Projec
             return fail(conn, project, &target_str, "exists but is not a git repository — move it aside or pass --path to a different directory.", "").await;
         }
         let (ok, origin) = git(&["remote", "get-url", "origin"], Some(&target)).await?;
-        if !ok || normalize_remote(&origin) != normalize_remote(&project.remote_url) {
+        let remote_ok = ok && normalize_remote(&origin) == normalize_remote(&project.remote_url);
+        let local_ok = is_local_remote(&project.remote_url) && project.remote_url == target_str;
+        if !remote_ok && !local_ok {
             return fail(conn, project, &target_str, &format!("checkout points at a different remote ('{origin}') — fix with git remote set-url origin {} or pass --path elsewhere.", project.remote_url), "").await;
         }
         let branch = detect_branch(&target).await;
         db::set_project_connection(conn, project.id, &target_str, &branch, project_status::CONNECTED, "")?;
+    } else if is_local_remote(&project.remote_url) && project.remote_url == target_str {
+        return fail(conn, project, "", &format!("local directory '{target_str}' no longer exists — move it back or remove the project."), "").await;
     } else {
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent)

@@ -37,6 +37,9 @@ pub struct TaskSource {
     pub last_polled_at: Option<String>,
     pub cursor: String,
     pub config_json: String,
+    pub backoff_until: String,
+    pub backoff_count: i64,
+    pub last_error: String,
 }
 
 #[derive(Debug)]

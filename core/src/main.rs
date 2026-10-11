@@ -1,6 +1,7 @@
 mod config;
 mod db;
 mod ipc;
+mod linear;
 mod models;
 mod poller;
 mod projects;
@@ -43,7 +44,7 @@ enum Cmd {
 #[derive(Subcommand)]
 enum ProjectCmd {
     Add {
-        url: String,
+        repo: String,
         #[arg(long)]
         name: Option<String>,
         #[arg(long)]
@@ -64,19 +65,32 @@ enum SourceCmd {
         kind: String,
         #[arg(long, short = 's')]
         set: Vec<String>,
+        #[arg(long)]
+        url: Option<String>,
     },
     List {
         #[arg(long)]
-        project: Option<String>,
+        project: String,
     },
     Remove {
         id: i64,
+        #[arg(long)]
+        project: String,
     },
     Enable {
         id: i64,
+        #[arg(long)]
+        project: String,
     },
     Disable {
         id: i64,
+        #[arg(long)]
+        project: String,
+    },
+    Poll {
+        #[arg(long)]
+        project: String,
+        id: Option<i64>,
     },
 }
 
@@ -93,7 +107,7 @@ enum TaskCmd {
     },
     List {
         #[arg(long)]
-        project: Option<String>,
+        project: String,
         #[arg(long)]
         status: Option<String>,
         #[arg(long, default_value = "20")]
@@ -101,6 +115,8 @@ enum TaskCmd {
     },
     Update {
         id: i64,
+        #[arg(long)]
+        project: String,
         #[arg(long)]
         status: Option<String>,
         #[arg(long)]
@@ -122,6 +138,24 @@ fn project_id_by_name(conn: &rusqlite::Connection, name: &str) -> Result<i64> {
         .id)
 }
 
+fn require_task_in_project(conn: &rusqlite::Connection, id: i64, project: &str) -> Result<()> {
+    let want = project_id_by_name(conn, project)?;
+    match db::task_project_id(conn, id)? {
+        Some(got) if got == want => Ok(()),
+        Some(_) => anyhow::bail!("task #{id} is not in project '{project}'"),
+        None => anyhow::bail!("no task #{id}"),
+    }
+}
+
+fn require_source_in_project(conn: &rusqlite::Connection, id: i64, project: &str) -> Result<()> {
+    let want = project_id_by_name(conn, project)?;
+    match db::get_source(conn, id)? {
+        Some(s) if s.project_id == want => Ok(()),
+        Some(_) => anyhow::bail!("source #{id} is not in project '{project}'"),
+        None => anyhow::bail!("no source #{id}"),
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -137,34 +171,80 @@ async fn main() -> Result<()> {
             run_loops(cfg).await?;
         }
         Cmd::Project { cmd } => match cmd {
-            ProjectCmd::Add { url, name, path } => {
+            ProjectCmd::Add { repo, name, path } => {
                 let conn = open_db()?;
-                let name = match name {
-                    Some(n) => {
-                        if !projects::valid_name(&n) {
-                            anyhow::bail!("invalid name '{n}' — use letters, digits, '-', '_' or '.'");
-                        }
-                        n
+                let check_name = |n: String| -> Result<String> {
+                    if !projects::valid_name(&n) {
+                        anyhow::bail!("invalid name '{n}' — use letters, digits, '-', '_' or '.'");
                     }
-                    None => projects::derive_name(&url)?,
+                    Ok(n)
                 };
-                let project = match db::get_project_by_name(&conn, &name)? {
-                    Some(r) => r,
-                    None => match db::get_project_by_remote(&conn, url.trim())? {
-                        Some(r) => r,
-                        None => {
-                            let id = db::insert_project(
-                                &conn,
-                                &models::NewProject {
-                                    name: &name,
-                                    remote_url: url.trim(),
-                                    local_path: path.as_deref().unwrap_or(""),
-                                },
-                            )?;
-                            db::get_project_by_name(&conn, &name)?
-                                .context(format!("project #{id} vanished"))?
+                let project = match projects::classify_repo_arg(&repo)? {
+                    projects::RepoRef::Remote(url) => {
+                        let name = match name {
+                            Some(n) => check_name(n)?,
+                            None => projects::derive_name(&url)?,
+                        };
+                        match db::get_project_by_name(&conn, &name)? {
+                            Some(r) => r,
+                            None => match db::get_project_by_remote(&conn, url.trim())? {
+                                Some(r) => r,
+                                None => {
+                                    let id = db::insert_project(
+                                        &conn,
+                                        &models::NewProject {
+                                            name: &name,
+                                            remote_url: url.trim(),
+                                            local_path: path.as_deref().unwrap_or(""),
+                                        },
+                                    )?;
+                                    db::get_project_by_name(&conn, &name)?
+                                        .context(format!("project #{id} vanished"))?
+                                }
+                            },
                         }
-                    },
+                    }
+                    projects::RepoRef::Local(dir) => {
+                        if path.is_some() {
+                            anyhow::bail!("--path is for clone URLs — '{}' already is the checkout", dir.display());
+                        }
+                        projects::assert_repo(&dir).await?;
+                        let dir_str = dir.to_string_lossy().to_string();
+                        let name = match name {
+                            Some(n) => check_name(n)?,
+                            None => projects::derive_local_name(&dir)?,
+                        };
+                        let origin = projects::origin_of(&dir).await;
+                        match db::get_project_by_name(&conn, &name)? {
+                            Some(r) => r,
+                            None => {
+                                let by_remote = if origin.is_empty() {
+                                    None
+                                } else {
+                                    db::get_project_by_remote(&conn, &origin)?
+                                };
+                                match by_remote {
+                                    Some(r) => r,
+                                    None => match db::get_project_by_local_path(&conn, &dir_str)? {
+                                        Some(r) => r,
+                                        None => {
+                                            let remote_url = if origin.is_empty() { &dir_str } else { &origin };
+                                            let id = db::insert_project(
+                                                &conn,
+                                                &models::NewProject {
+                                                    name: &name,
+                                                    remote_url,
+                                                    local_path: &dir_str,
+                                                },
+                                            )?;
+                                            db::get_project_by_name(&conn, &name)?
+                                                .context(format!("project #{id} vanished"))?
+                                        }
+                                    },
+                                }
+                            }
+                        }
+                    }
                 };
                 let project = projects::ensure_local(&conn, &project).await?;
                 println!("{} [{}] {}", project.name, project.status, project.local_path);
@@ -189,16 +269,37 @@ async fn main() -> Result<()> {
             }
         },
         Cmd::Source { cmd } => match cmd {
-            SourceCmd::Add { project, kind, set } => {
+            SourceCmd::Add { project, kind, set, url } => {
                 if !models::source_kind::valid(&kind) {
                     anyhow::bail!(
                         "invalid kind '{kind}' — one of: {}",
                         models::source_kind::ALL.join(", ")
                     );
                 }
+                if kind != models::source_kind::LINEAR && url.is_some() {
+                    anyhow::bail!("--url is only supported for linear sources");
+                }
+                if url.is_some() && !set.is_empty() {
+                    anyhow::bail!("pass either --url or -s key=value, not both");
+                }
                 let conn = open_db()?;
                 let project_id = project_id_by_name(&conn, &project)?;
                 let mut map = serde_json::Map::new();
+                if let Some(link) = url {
+                    match linear::parse_linear_url(&link)? {
+                        linear::UrlScope::Team(team) => {
+                            map.insert("team".to_string(), serde_json::Value::String(team));
+                        }
+                        linear::UrlScope::Project(uuid) => {
+                            let (name, teams) = linear::resolve_project(&uuid).await?;
+                            if teams.len() > 1 {
+                                println!("project spans {} teams — scoping to {}", teams.len(), teams[0]);
+                            }
+                            map.insert("team".to_string(), serde_json::Value::String(teams[0].clone()));
+                            map.insert("project".to_string(), serde_json::Value::String(name));
+                        }
+                    }
+                }
                 for kv in &set {
                     let (k, v) = kv.split_once('=').with_context(|| {
                         format!("bad --set '{kv}' — expected key=value")
@@ -220,47 +321,90 @@ async fn main() -> Result<()> {
                         config_json: &config_json,
                     },
                 )?;
-                println!("created source #{id} ({kind})");
+                if kind == models::source_kind::LINEAR {
+                    match linear::ping().await {
+                        Ok(()) => println!("created source #{id} ({kind}) — Linear reachable"),
+                        Err(e) => {
+                            let _ = db::set_source_error(&conn, id, &e.to_string());
+                            eprintln!("created source #{id} ({kind}) but Linear is unreachable:");
+                            eprintln!("{e:#}");
+                            std::process::exit(1);
+                        }
+                    }
+                } else {
+                    println!("created source #{id} ({kind})");
+                }
             }
             SourceCmd::List { project } => {
                 let conn = open_db()?;
-                let project_id = match project {
-                    Some(name) => Some(project_id_by_name(&conn, &name)?),
-                    None => None,
-                };
-                for s in db::list_sources(&conn, project_id)? {
+                let project_id = project_id_by_name(&conn, &project)?;
+                for s in db::list_sources(&conn, Some(project_id))? {
                     let state = if s.enabled { "on" } else { "off" };
                     let owner = db::get_project_by_id(&conn, s.project_id)?
                         .map(|p| p.name)
                         .unwrap_or_else(|| format!("#{}", s.project_id));
-                    println!(
-                        "{:<5} {:<12} {:<8} {:<4} {}",
-                        s.id, owner, s.kind, state, s.config_json
-                    );
+                    let err: String = s.last_error.lines().next().unwrap_or("").chars().take(100).collect();
+                    if err.is_empty() {
+                        println!(
+                            "{:<5} {:<12} {:<8} {:<4} {}",
+                            s.id, owner, s.kind, state, s.config_json
+                        );
+                    } else {
+                        println!(
+                            "{:<5} {:<12} {:<8} {:<4} {}  ! {err}",
+                            s.id, owner, s.kind, state, s.config_json
+                        );
+                    }
                 }
             }
-            SourceCmd::Remove { id } => {
+            SourceCmd::Remove { id, project } => {
                 let conn = open_db()?;
-                if db::remove_source(&conn, id)? {
-                    println!("removed source #{id}");
-                } else {
-                    anyhow::bail!("no source #{id}");
-                }
+                require_source_in_project(&conn, id, &project)?;
+                db::remove_source(&conn, id)?;
+                println!("removed source #{id}");
             }
-            SourceCmd::Enable { id } => {
+            SourceCmd::Enable { id, project } => {
                 let conn = open_db()?;
-                if db::set_source_enabled(&conn, id, true)? {
-                    println!("enabled source #{id}");
-                } else {
-                    anyhow::bail!("no source #{id}");
-                }
+                require_source_in_project(&conn, id, &project)?;
+                db::set_source_enabled(&conn, id, true)?;
+                println!("enabled source #{id}");
             }
-            SourceCmd::Disable { id } => {
+            SourceCmd::Disable { id, project } => {
                 let conn = open_db()?;
-                if db::set_source_enabled(&conn, id, false)? {
-                    println!("disabled source #{id}");
-                } else {
-                    anyhow::bail!("no source #{id}");
+                require_source_in_project(&conn, id, &project)?;
+                db::set_source_enabled(&conn, id, false)?;
+                println!("disabled source #{id}");
+            }
+            SourceCmd::Poll { project, id } => {
+                let conn = open_db()?;
+                let project_id = project_id_by_name(&conn, &project)?;
+                drop(conn);
+                match id {
+                    Some(i) => {
+                        {
+                            let conn = open_db()?;
+                            require_source_in_project(&conn, i, &project)?;
+                        }
+                        match poller::poll_single(i).await? {
+                            poller::Outcome::Synced(n) => {
+                                println!("source #{i}: synced ({n} open issues)")
+                            }
+                            poller::Outcome::Skipped(reason) => {
+                                println!("source #{i}: skipped ({reason})")
+                            }
+                            poller::Outcome::Failed(msg) => {
+                                eprintln!("source #{i}: {msg}");
+                                std::process::exit(1);
+                            }
+                        }
+                    }
+                    None => {
+                        let totals = poller::poll_project(project_id).await?;
+                        println!(
+                            "polled {} source(s), {} open issue(s)",
+                            totals.sources, totals.upserted
+                        );
+                    }
                 }
             }
         },
@@ -289,10 +433,7 @@ async fn main() -> Result<()> {
             }
             TaskCmd::List { project, status, limit } => {
                 let conn = open_db()?;
-                let project_id = match project {
-                    Some(name) => Some(project_id_by_name(&conn, &name)?),
-                    None => None,
-                };
+                let project_id = project_id_by_name(&conn, &project)?;
                 if let Some(s) = &status {
                     if !models::status::valid(s) {
                         anyhow::bail!(
@@ -301,13 +442,14 @@ async fn main() -> Result<()> {
                         );
                     }
                 }
-                for t in db::list_tasks(&conn, project_id, status.as_deref(), limit)? {
+                for t in db::list_tasks(&conn, Some(project_id), status.as_deref(), limit)? {
                     let source = t.source_kind.as_deref().unwrap_or("");
                     println!("{:<5} {:<10} {:<12} {}", t.id, t.status, source, t.title);
                 }
             }
             TaskCmd::Update {
                 id,
+                project,
                 status,
                 priority,
                 instructions,
@@ -321,17 +463,15 @@ async fn main() -> Result<()> {
                     }
                 }
                 let conn = open_db()?;
-                if db::update_task(
+                require_task_in_project(&conn, id, &project)?;
+                db::update_task(
                     &conn,
                     id,
                     status.as_deref(),
                     priority,
                     instructions.as_deref(),
-                )? {
-                    println!("updated task #{id}");
-                } else {
-                    anyhow::bail!("no task #{id}");
-                }
+                )?;
+                println!("updated task #{id}");
             }
         },
     }
