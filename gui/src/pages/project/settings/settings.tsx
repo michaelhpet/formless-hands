@@ -15,13 +15,14 @@ import {
 	EmptyTitle,
 } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
-import { useProjects } from "@/lib/api/projects";
+import { usePollProject, useProjects } from "@/lib/api/projects";
 import {
 	useCreateSource,
 	useDeleteSource,
 	useSetSourceEnabled,
 	useSources,
 } from "@/lib/api/sources";
+import { formatStamp } from "@/lib/datetime";
 import { AddSourceDialog } from "./add-source-dialog";
 
 interface EditableSource {
@@ -78,8 +79,8 @@ export function ProjectSettingsPage() {
 	const [baseline, setBaseline] = useState({ name, remote, localPath, branch });
 	const [sources, setSources] = useState<EditableSource[]>([]);
 	const [lastPolled, setLastPolled] = useState("polled 30s ago");
-	const [polling, setPolling] = useState(false);
 	const [savedAt, setSavedAt] = useState<string | null>(null);
+	const pollMutation = usePollProject();
 	const createSourceMutation = useCreateSource();
 	const setEnabledMutation = useSetSourceEnabled();
 	const deleteSourceMutation = useDeleteSource();
@@ -140,11 +141,23 @@ export function ProjectSettingsPage() {
 	};
 
 	const pollNow = () => {
-		setPolling(true);
-		window.setTimeout(() => {
-			setPolling(false);
-			setLastPolled("polled just now");
-		}, 900);
+		if (projectId === undefined) {
+			return;
+		}
+		pollMutation.mutate(projectId, {
+			onSuccess: (result) => {
+				setLastPolled(
+					`polled just now · ${result.sources} sources · ${result.upserted} issues`,
+				);
+			},
+			onError: (error) => {
+				setLastPolled(
+					error instanceof Error
+						? `poll failed: ${error.message}`
+						: "poll failed",
+				);
+			},
+		});
 	};
 
 	const toggleSource = (sourceId: number) => {
@@ -203,8 +216,12 @@ export function ProjectSettingsPage() {
 						</p>
 					</div>
 					<div className="flex shrink-0 items-center gap-2">
-						<Button variant="outline" onClick={pollNow} disabled={polling}>
-							{polling ? "Polling..." : "Poll now"}
+						<Button
+							variant="outline"
+							onClick={pollNow}
+							disabled={pollMutation.isPending}
+						>
+							{pollMutation.isPending ? "Polling..." : "Poll now"}
 						</Button>
 						<Button onClick={save} disabled={!dirty}>
 							Save changes
@@ -281,7 +298,7 @@ export function ProjectSettingsPage() {
 									.filter((stamp): stamp is string => stamp !== null)
 									.sort();
 								return stamps.length > 0
-									? `last polled ${stamps[stamps.length - 1]}`
+									? `last polled ${formatStamp(stamps[stamps.length - 1])}`
 									: lastPolled;
 							})()}
 						</span>

@@ -1,4 +1,5 @@
 import type { Work as WorkRecord } from "@/lib/api/works";
+import { formatStamp, parseUtcStamp } from "@/lib/datetime";
 
 export type WorkStatus = "running" | "success" | "failed";
 
@@ -37,10 +38,6 @@ export const STATUS_LABELS: Record<WorkStatusFilter, string> = {
 	failed: "Failed",
 };
 
-function parseStamp(stamp: string): number {
-	return Date.parse(`${stamp.replace(" ", "T")}Z`);
-}
-
 export function mapApiWork(work: WorkRecord): Work {
 	const status: WorkStatus =
 		work.finished_at === null
@@ -48,9 +45,11 @@ export function mapApiWork(work: WorkRecord): Work {
 			: work.exit_code === 0
 				? "success"
 				: "failed";
-	const start = parseStamp(work.started_at);
+	const start = parseUtcStamp(work.started_at).getTime();
 	const end =
-		work.finished_at === null ? Date.now() : parseStamp(work.finished_at);
+		work.finished_at === null
+			? Date.now()
+			: parseUtcStamp(work.finished_at).getTime();
 	const durationMin =
 		Number.isFinite(start) && Number.isFinite(end) && end >= start
 			? Math.max(0, Math.round((end - start) / 60000))
@@ -61,7 +60,7 @@ export function mapApiWork(work: WorkRecord): Work {
 		taskTitle: work.task_title,
 		branch: work.branch,
 		worktree: work.worktree_path,
-		started: work.started_at.slice(5, 16),
+		started: formatStamp(work.started_at),
 		duration: work.finished_at === null ? "live" : `${durationMin}m`,
 		durationMin,
 		exitCode: work.exit_code,

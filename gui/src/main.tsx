@@ -3,6 +3,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App.tsx";
 import { ThemeProvider } from "./components/theme-provider.tsx";
+import { TooltipProvider } from "./components/ui/tooltip";
 import "./index.css";
 
 const queryClient = new QueryClient({
@@ -23,7 +24,9 @@ createRoot(root).render(
 	<StrictMode>
 		<QueryClientProvider client={queryClient}>
 			<ThemeProvider defaultTheme="system" storageKey="formless-hands-theme">
-				<App />
+				<TooltipProvider>
+					<App />
+				</TooltipProvider>
 			</ThemeProvider>
 		</QueryClientProvider>
 	</StrictMode>,

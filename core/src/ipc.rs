@@ -1,9 +1,9 @@
-use crate::{db, models, projects, sources};
+use crate::{db, models, poller, projects, sources};
 use anyhow::{Context, Result};
 use axum::{
     extract::{Path, Query},
     http::{header, HeaderName, StatusCode},
-    routing::get,
+    routing::{get, post},
     Json, Router,
 };
 use serde::Deserialize;
@@ -31,6 +31,7 @@ pub fn router() -> Router {
     Router::new()
         .route("/api/projects", get(api_projects).post(api_project_create))
         .route("/api/projects/{name}", get(api_project))
+        .route("/api/projects/{name}/poll", post(api_project_poll))
         .route("/api/sources", get(api_sources).post(api_source_create))
         .route(
             "/api/sources/{id}",
@@ -112,6 +113,22 @@ async fn api_project_create(
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?
         .ok_or((StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
     Ok((StatusCode::CREATED, Json(project)))
+}
+
+async fn api_project_poll(
+    Path(name): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let project_id = {
+        let conn = db::connect().map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
+        db::get_project_by_name(&conn, &name)
+            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?
+            .map(|p| p.id)
+            .ok_or((StatusCode::NOT_FOUND, format!("no project named '{name}'")))?
+    };
+    let totals = poller::poll_project(project_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(serde_json::json!({ "sources": totals.sources, "upserted": totals.upserted })))
 }
 
 async fn api_sources() -> Result<Json<Vec<models::TaskSource>>, StatusCode> {
