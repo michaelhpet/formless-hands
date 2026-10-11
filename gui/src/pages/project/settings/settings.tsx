@@ -206,8 +206,9 @@ export function ProjectSettingsPage() {
 							<Input
 								aria-label="Project name"
 								value={name}
-								onChange={(event) => setName(event.target.value)}
-								className="h-7 max-w-80 border-transparent text-right font-bold shadow-none hover:border-input focus-visible:border-input"
+								disabled
+								title="Inferred from the repository — cannot be renamed"
+								className="h-7 max-w-80 border-transparent text-right font-bold opacity-70 shadow-none"
 							/>
 						</div>
 						<div className="flex items-center justify-between gap-3 border-b px-3.5 py-2.5">

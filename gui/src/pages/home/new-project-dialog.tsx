@@ -15,9 +15,7 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 
 export interface NewProjectInput {
-	name: string;
-	remote: string;
-	localPath: string;
+	repo: string;
 }
 
 export function NewProjectDialog({
@@ -41,7 +39,8 @@ export function NewProjectDialog({
 				<DialogHeader>
 					<DialogTitle>New Project</DialogTitle>
 					<DialogDescription>
-						Track a local checkout. Sources can be attached later.
+						Track a GitHub repository or a local checkout. Sources can be
+						attached later.
 					</DialogDescription>
 				</DialogHeader>
 				<form
@@ -49,45 +48,25 @@ export function NewProjectDialog({
 					onSubmit={(event) => {
 						event.preventDefault();
 						const data = new FormData(event.currentTarget);
-						const name = String(data.get("name") ?? "").trim();
-						if (!name) {
+						const repo = String(data.get("repo") ?? "").trim();
+						if (!repo) {
 							return;
 						}
-						onCreate({
-							name,
-							remote: String(data.get("remote") ?? "").trim(),
-							localPath: String(data.get("localPath") ?? "").trim(),
-						});
+						onCreate({ repo });
 						event.currentTarget.reset();
 						setOpen(false);
 					}}
 				>
 					<FieldGroup>
 						<Field>
-							<FieldLabel htmlFor="new-project-name">Name</FieldLabel>
+							<FieldLabel htmlFor="new-project-repo">
+								GitHub URL or local path
+							</FieldLabel>
 							<Input
-								id="new-project-name"
-								name="name"
+								id="new-project-repo"
+								name="repo"
 								required
-								placeholder="my-project"
-								autoComplete="off"
-							/>
-						</Field>
-						<Field>
-							<FieldLabel htmlFor="new-project-remote">Remote</FieldLabel>
-							<Input
-								id="new-project-remote"
-								name="remote"
-								placeholder="git@github.com:acme/my-project.git"
-								autoComplete="off"
-							/>
-						</Field>
-						<Field>
-							<FieldLabel htmlFor="new-project-path">Local path</FieldLabel>
-							<Input
-								id="new-project-path"
-								name="localPath"
-								placeholder="~/Work/my-project"
+								placeholder="git@github.com:acme/app.git or ~/Work/app"
 								autoComplete="off"
 							/>
 						</Field>

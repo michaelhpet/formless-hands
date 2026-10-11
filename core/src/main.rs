@@ -46,8 +46,6 @@ enum ProjectCmd {
     Add {
         repo: String,
         #[arg(long)]
-        name: Option<String>,
-        #[arg(long)]
         path: Option<String>,
     },
     List,
@@ -171,20 +169,11 @@ async fn main() -> Result<()> {
             run_loops(cfg).await?;
         }
         Cmd::Project { cmd } => match cmd {
-            ProjectCmd::Add { repo, name, path } => {
+            ProjectCmd::Add { repo, path } => {
                 let conn = open_db()?;
-                let check_name = |n: String| -> Result<String> {
-                    if !projects::valid_name(&n) {
-                        anyhow::bail!("invalid name '{n}' — use letters, digits, '-', '_' or '.'");
-                    }
-                    Ok(n)
-                };
                 let project = match projects::classify_repo_arg(&repo)? {
                     projects::RepoRef::Remote(url) => {
-                        let name = match name {
-                            Some(n) => check_name(n)?,
-                            None => projects::derive_name(&url)?,
-                        };
+                        let name = projects::derive_github_name(&url)?;
                         match db::get_project_by_name(&conn, &name)? {
                             Some(r) => r,
                             None => match db::get_project_by_remote(&conn, url.trim())? {
@@ -209,11 +198,9 @@ async fn main() -> Result<()> {
                             anyhow::bail!("--path is for clone URLs — '{}' already is the checkout", dir.display());
                         }
                         projects::assert_repo(&dir).await?;
+                        let dir = projects::worktree_root(&dir).await?;
                         let dir_str = dir.to_string_lossy().to_string();
-                        let name = match name {
-                            Some(n) => check_name(n)?,
-                            None => projects::derive_local_name(&dir)?,
-                        };
+                        let name = projects::derive_local_name(&dir)?;
                         let origin = projects::origin_of(&dir).await;
                         match db::get_project_by_name(&conn, &name)? {
                             Some(r) => r,

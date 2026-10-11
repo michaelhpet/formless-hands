@@ -21,6 +21,22 @@ function projectSources(
 		.map((source) => ({ name: source.kind, on: source.enabled }));
 }
 
+function inferProject(repo: string): {
+	name: string;
+	remote: string;
+	localPath: string;
+} {
+	const value = repo.trim();
+	if (value.startsWith("~") || value.startsWith("/") || value.startsWith(".")) {
+		const base = value.replace(/\/+$/, "").split("/").pop() ?? value;
+		const name = base.replace(/\.git$/, "") || value;
+		return { name, remote: "None", localPath: value };
+	}
+	const tail = value.replace(/\/+$/, "").split(/[/:]/).pop() ?? value;
+	const name = tail.replace(/\.git$/, "") || value;
+	return { name, remote: value, localPath: "None" };
+}
+
 function taskCounts(tasks: TaskRecord[] | undefined, projectId: number) {
 	const rows = (tasks ?? []).filter((task) => task.project_id === projectId);
 	return {
@@ -57,16 +73,17 @@ export function HomePage() {
 	).length;
 
 	const createProject = (input: NewProjectInput) => {
+		const inferred = inferProject(input.repo);
 		setCreated((prev) => [
 			...prev,
 			{
-				id: input.name,
-				name: input.name,
+				id: inferred.name,
+				name: inferred.name,
 				branch: "main",
 				updated: "just now",
 				status: "connected",
-				remote: input.remote || "None",
-				localPath: input.localPath || "None",
+				remote: inferred.remote,
+				localPath: inferred.localPath,
 				tasksRunning: 0,
 				tasksFailed: 0,
 				sources: [],

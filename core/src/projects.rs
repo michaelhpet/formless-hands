@@ -77,6 +77,15 @@ pub async fn assert_repo(dir: &Path) -> Result<()> {
     Ok(())
 }
 
+pub async fn worktree_root(dir: &Path) -> Result<PathBuf> {
+    let (ok, out) = git(&["rev-parse", "--show-toplevel"], Some(dir)).await?;
+    if ok && !out.trim().is_empty() {
+        return Ok(PathBuf::from(out));
+    }
+    dir.canonicalize()
+        .with_context(|| format!("resolve local directory '{}'", dir.display()))
+}
+
 pub async fn origin_of(dir: &Path) -> String {
     match git(&["remote", "get-url", "origin"], Some(dir)).await {
         Ok((true, origin)) => origin,
@@ -86,6 +95,14 @@ pub async fn origin_of(dir: &Path) -> String {
 
 pub fn is_local_remote(remote_url: &str) -> bool {
     Path::new(remote_url).is_absolute()
+}
+
+pub fn derive_github_name(url: &str) -> Result<String> {
+    let (host, _) = split_host_path(url)?;
+    if host != "github.com" {
+        anyhow::bail!("only github repositories are supported — got host '{host}'");
+    }
+    derive_name(url)
 }
 
 pub fn derive_name(url: &str) -> Result<String> {
