@@ -139,4 +139,5 @@ pub struct Work {
     pub finished_at: Option<String>,
     pub exit_code: Option<i64>,
     pub log_path: String,
+    pub session_id: Option<String>,
 }

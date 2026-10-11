@@ -65,7 +65,8 @@ CREATE TABLE IF NOT EXISTS works (
   started_at  TEXT NOT NULL DEFAULT (datetime('now')),
   finished_at TEXT,
   exit_code   INTEGER,
-  log_path    TEXT NOT NULL DEFAULT ''
+  log_path    TEXT NOT NULL DEFAULT '',
+  session_id  TEXT
 );
 CREATE TABLE IF NOT EXISTS review_comments (
   id        INTEGER PRIMARY KEY,
@@ -177,6 +178,7 @@ fn work_row(r: &rusqlite::Row) -> rusqlite::Result<Work> {
         finished_at: r.get(8)?,
         exit_code: r.get(9)?,
         log_path: r.get(10)?,
+        session_id: r.get(11)?,
     })
 }
 
@@ -188,7 +190,8 @@ pub fn list_works(
 ) -> Result<Vec<Work>> {
     let mut st = conn.prepare(
         "SELECT w.id, w.task_id, t.external_id, t.title, t.project_id,
-           w.worktree_path, w.branch, w.started_at, w.finished_at, w.exit_code, w.log_path
+           w.worktree_path, w.branch, w.started_at, w.finished_at, w.exit_code, w.log_path,
+           w.session_id
          FROM works w JOIN tasks t ON t.id = w.task_id
          WHERE (?1 IS NULL OR t.project_id = ?1)
          ORDER BY w.id DESC LIMIT ?2 OFFSET ?3",
@@ -200,7 +203,8 @@ pub fn list_works(
 pub fn get_work(conn: &Connection, id: i64) -> Result<Option<Work>> {
     let mut st = conn.prepare(
         "SELECT w.id, w.task_id, t.external_id, t.title, t.project_id,
-           w.worktree_path, w.branch, w.started_at, w.finished_at, w.exit_code, w.log_path
+           w.worktree_path, w.branch, w.started_at, w.finished_at, w.exit_code, w.log_path,
+           w.session_id
          FROM works w JOIN tasks t ON t.id = w.task_id
          WHERE w.id = ?1",
     )?;
@@ -263,6 +267,31 @@ pub fn insert_work(
         rusqlite::params![task_id, worktree_path, branch, log_path],
     )?;
     Ok(conn.last_insert_rowid())
+}
+
+pub fn finish_work(conn: &Connection, id: i64, exit_code: i64) -> Result<()> {
+    conn.execute(
+        "UPDATE works SET finished_at = datetime('now'), exit_code = ?1 WHERE id = ?2",
+        rusqlite::params![exit_code, id],
+    )?;
+    Ok(())
+}
+
+pub fn set_task_backoff(conn: &Connection, id: i64, until: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE tasks SET backoff_until = ?1, backoff_count = backoff_count + 1,
+           locked = 0, updated_at = datetime('now') WHERE id = ?2",
+        rusqlite::params![until, id],
+    )?;
+    Ok(())
+}
+
+pub fn set_work_session(conn: &Connection, id: i64, session_id: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE works SET session_id = ?1 WHERE id = ?2",
+        rusqlite::params![session_id, id],
+    )?;
+    Ok(())
 }
 
 pub fn task_project_id(conn: &Connection, id: i64) -> Result<Option<i64>> {

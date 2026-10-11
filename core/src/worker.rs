@@ -2,6 +2,8 @@ use crate::config::Config;
 use crate::{db, models};
 use anyhow::{Context, Result};
 
+const WORK_TIMEOUT_SECS: u64 = 1800;
+
 fn state_file(kind: &str, task_id: i64, attempt: i64, ext: &str) -> Result<std::path::PathBuf> {
     let dir = crate::config::expand_home("~/.local/share/formless-hands").join(kind);
     std::fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
@@ -164,13 +166,12 @@ pub async fn work_once(_cfg: &Config) -> Result<()> {
         return Ok(());
     }
 
-    let command = format!("opencode run {} (spawn not implemented)", prompt_path.display());
     let log_path = state_file("transcripts", task.id, attempt, "log")?;
-    let transcript = format!(
-        "work claim: task #{} attempt {attempt} branch {branch}\nwould run: {command}\n",
+    let header = format!(
+        "work claim: task #{} attempt {attempt} branch {branch}\nrunning: opencode run --format json (cwd {worktree_str})\n",
         task.id,
     );
-    if let Err(e) = std::fs::write(&log_path, &transcript)
+    if let Err(e) = std::fs::write(&log_path, &header)
         .with_context(|| format!("write {}", log_path.display()))
     {
         let conn = db::connect()?;
@@ -183,12 +184,143 @@ pub async fn work_once(_cfg: &Config) -> Result<()> {
         let conn = db::connect()?;
         db::insert_work(&conn, task.id, &worktree_str, &branch, &log_path.to_string_lossy())?
     };
-    tracing::info!(
-        task = task.id,
-        work = work_id,
-        branch = %branch,
-        worktree = %worktree_str,
-        "{command}"
-    );
+
+    let mut child = match tokio::process::Command::new("opencode")
+        .arg("run")
+        .arg("--format")
+        .arg("json")
+        .arg(&prompt)
+        .current_dir(&worktree_str)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(e) => {
+            let msg = format!("opencode not available: {e}");
+            let conn = db::connect()?;
+            finish_failed(&conn, work_id, -1, &msg).ok();
+            db::block_task(&conn, task.id, &msg)?;
+            tracing::error!(task = task.id, work = work_id, "{msg}");
+            return Ok(());
+        }
+    };
+    tracing::info!(task = task.id, work = work_id, branch = %branch, "worker: agent running");
+    let mut slot = Some(child);
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(WORK_TIMEOUT_SECS),
+        async { slot.take().expect("child").wait_with_output().await },
+    )
+    .await
+    {
+        Ok(Ok(output)) => {
+            let code = output.status.code().unwrap_or(-1) as i64;
+            append_output(&log_path, &output);
+            let conn = db::connect()?;
+            record_session(&conn, work_id, &log_path);
+            db::finish_work(&conn, work_id, code)?;
+            if code == 0 {
+                db::update_task(&conn, task.id, Some(models::status::COMPLETED), None, None)?;
+                tracing::info!(task = task.id, work = work_id, "worker: completed");
+            } else {
+                let tail = tail_text(&String::from_utf8_lossy(&output.stderr), 2000);
+                let msg = format!("agent exited with code {code}: {tail}");
+                db::block_task(&conn, task.id, &msg)?;
+                tracing::error!(task = task.id, work = work_id, "{msg}");
+            }
+        }
+        Ok(Err(e)) => {
+            let msg = format!("agent wait failed: {e}");
+            finish_failed(&db::connect()?, work_id, -1, &msg).ok();
+            let conn = db::connect()?;
+            db::block_task(&conn, task.id, &msg)?;
+            tracing::error!(task = task.id, work = work_id, "{msg}");
+        }
+        Err(_) => {
+            if let Some(mut child) = slot.take() {
+                let _ = child.kill().await;
+                let _ = child.wait().await;
+            }
+            let msg = format!("agent timed out after {WORK_TIMEOUT_SECS}s");
+            finish_failed(&db::connect()?, work_id, 124, &msg).ok();
+            let conn = db::connect()?;
+            record_session(&conn, work_id, &log_path);
+            db::update_task(&conn, task.id, Some(models::status::TRIAGED), None, None)?;
+            db::set_task_backoff(
+                &conn,
+                task.id,
+                &crate::linear::backoff_until_now_plus(crate::linear::backoff_delay_secs(1)),
+            )?;
+            tracing::warn!(task = task.id, work = work_id, "{msg} — released to triage with backoff");
+        }
+    }
+    Ok(())
+}
+
+fn session_in(value: &serde_json::Value) -> Option<String> {
+    for key in ["sessionID", "sessionId", "session_id"] {
+        if let Some(id) = value.get(key).and_then(|v| v.as_str()) {
+            if !id.trim().is_empty() {
+                return Some(id.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn record_session(conn: &rusqlite::Connection, work_id: i64, log_path: &std::path::Path) {
+    let Ok(text) = std::fs::read_to_string(log_path) else {
+        return;
+    };
+    for line in text.lines() {
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        if let Some(id) = session_in(&value) {
+            let _ = db::set_work_session(conn, work_id, &id);
+            tracing::info!(work = work_id, session = %id, "worker: recorded session");
+            return;
+        }
+        if let Some(obj) = value.as_object() {
+            for nested in ["data", "session", "payload"] {
+                if let Some(found) = obj.get(nested).and_then(session_in) {
+                    let _ = db::set_work_session(conn, work_id, &found);
+                    tracing::info!(work = work_id, session = %found, "worker: recorded session");
+                    return;
+                }
+            }
+        }
+    }
+}
+
+fn tail_text(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        return s.trim().to_string();
+    }
+    format!("…{}", &s[s.len() - max..])
+}
+
+fn append_output(log_path: &std::path::Path, output: &std::process::Output) {
+    use std::io::Write;
+    let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
+    text.push_str(&String::from_utf8_lossy(&output.stderr));
+    let text = tail_text(&text, 200_000);
+    if let Ok(mut f) = std::fs::OpenOptions::new().append(true).open(log_path) {
+        let _ = writeln!(f, "--- exit: {} ---\n{text}", output.status);
+    }
+}
+
+fn finish_failed(conn: &rusqlite::Connection, work_id: i64, code: i64, msg: &str) -> Result<()> {
+    db::finish_work(conn, work_id, code)?;
+    let entry = format!("\n--- failed: {msg} ---\n");
+    if let Ok(Some(w)) = db::get_work(conn, work_id) {
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&w.log_path)
+        {
+            let _ = write!(f, "{entry}");
+        }
+    }
     Ok(())
 }

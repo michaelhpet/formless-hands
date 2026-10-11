@@ -15,6 +15,7 @@ export interface Work {
 	finished_at: string | null;
 	exit_code: number | null;
 	log_path: string;
+	session_id: string | null;
 }
 
 export interface GetWorksParams {
