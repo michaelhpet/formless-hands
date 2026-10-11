@@ -26,22 +26,31 @@ struct TaskQuery {
     limit: Option<i64>,
 }
 
-pub async fn serve(cfg: &crate::config::Config) -> Result<()> {
-    let conn = db::connect()?;
-    db::migrate(&conn)?;
-    drop(conn);
-    let app = Router::new()
+pub fn router() -> Router {
+    Router::new()
         .route("/api/projects", get(api_projects))
         .route("/api/sources", get(api_sources))
         .route("/api/tasks", get(api_tasks))
         .route("/", get(index))
-        .route("/{*path}", get(asset));
+        .route("/{*path}", get(asset))
+}
+
+pub async fn serve_with_shutdown(
+    cfg: &crate::config::Config,
+    shutdown: impl std::future::Future<Output = ()> + Send + 'static,
+) -> Result<()> {
+    let conn = db::connect()?;
+    db::migrate(&conn)?;
+    drop(conn);
+    let app = router();
     let addr = format!("127.0.0.1:{}", cfg.server.port);
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
         .with_context(|| format!("bind {addr}"))?;
     tracing::info!(%addr, "serving gui + api");
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown)
+        .await?;
     Ok(())
 }
 

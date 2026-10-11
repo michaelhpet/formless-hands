@@ -2,10 +2,10 @@ use anyhow::{Context, Result};
 use serde::Deserialize;
 
 fn default_poll_cron() -> String {
-    "0 * * * *".into()
+    "0 0 * * * *".into()
 }
 fn default_watch_cron() -> String {
-    "*/2 * * * *".into()
+    "0 */2 * * * *".into()
 }
 fn default_max_workers() -> usize {
     1
@@ -68,12 +68,34 @@ pub(crate) fn expand_home(s: &str) -> std::path::PathBuf {
     }
 }
 
+pub fn normalize_cron(label: &str, expr: &str) -> Result<String> {
+    let trimmed = expr.trim();
+    if trimmed.is_empty() {
+        anyhow::bail!("bad {label} '' — expected cron like \"0 0 * * * *\"");
+    }
+    let fields: Vec<&str> = trimmed.split_whitespace().collect();
+    match fields.len() {
+        5 => Ok(format!("0 {trimmed}")),
+        6 | 7 => Ok(trimmed.to_string()),
+        n => anyhow::bail!(
+            "bad {label} '{expr}' — expected 5-7 space-separated fields, got {n}"
+        ),
+    }
+}
+
 pub fn load() -> Result<Config> {
     let p = expand_home("~/.config/formless-hands/config.toml");
     if !p.exists() {
-        return Ok(Config::default());
+        let cfg = Config::default();
+        normalize_cron("poll_cron", &cfg.service.poll_cron)?;
+        normalize_cron("watch_cron", &cfg.service.watch_cron)?;
+        return Ok(cfg);
     }
     let raw = std::fs::read_to_string(&p).with_context(|| format!("read {}", p.display()))?;
-    toml::from_str(&raw).with_context(|| format!("parse {}", p.display()))
+    let cfg: Config = toml::from_str(&raw).with_context(|| format!("parse {}", p.display()))?;
+    normalize_cron("poll_cron", &cfg.service.poll_cron).with_context(|| format!("parse {}", p.display()))?;
+    normalize_cron("watch_cron", &cfg.service.watch_cron)
+        .with_context(|| format!("parse {}", p.display()))?;
+    Ok(cfg)
 }
 

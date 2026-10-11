@@ -13,7 +13,7 @@ use clap::{Parser, Subcommand};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
-#[command(name = "formless-hands", about = "Autonomous coding-agent orchestrator")]
+#[command(about = "Autonomous coding-agent orchestrator")]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
@@ -338,12 +338,113 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+async fn pipeline_tick(cfg: &config::Config) {
+    let start = std::time::Instant::now();
+    tracing::info!("tick=pipeline start");
+    if let Err(e) = poller::poll_once().await {
+        tracing::error!(error = %e, "tick=pipeline poll failed");
+        return;
+    }
+    if let Err(e) = triage::triage_once(cfg).await {
+        tracing::error!(error = %e, "tick=pipeline triage failed");
+        return;
+    }
+    if let Err(e) = worker::work_once(cfg).await {
+        tracing::error!(error = %e, "tick=pipeline worker failed");
+    }
+    tracing::info!(elapsed_ms = start.elapsed().as_millis(), "tick=pipeline done");
+}
+
+async fn watch_tick(cfg: &config::Config) {
+    let start = std::time::Instant::now();
+    tracing::info!("tick=watch start");
+    if let Err(e) = watcher::watch_once(cfg).await {
+        tracing::error!(error = %e, "tick=watch failed");
+    }
+    tracing::info!(elapsed_ms = start.elapsed().as_millis(), "tick=watch done");
+}
+
 async fn run_loops(cfg: config::Config) -> Result<()> {
-    tracing::info!("tick: poll -> triage -> work -> watch (single pass, v0)");
-    poller::poll_once().await?;
-    triage::triage_once(&cfg).await?;
-    worker::work_once(&cfg).await?;
-    watcher::watch_once(&cfg).await?;
-    ipc::serve(&cfg).await?;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+    use tokio_cron_scheduler::{Job, JobScheduler};
+
+    let poll_schedule = config::normalize_cron("poll_cron", &cfg.service.poll_cron)?;
+    let watch_schedule = config::normalize_cron("watch_cron", &cfg.service.watch_cron)?;
+
+    let mut sched = JobScheduler::new().await.context("start cron scheduler")?;
+
+    let pipeline_guard: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+    let watch_guard: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+
+    {
+        let cfg = cfg.clone();
+        let poll_cron = cfg.service.poll_cron.clone();
+        let guard = Arc::clone(&pipeline_guard);
+        let job = Job::new_async(poll_schedule.as_str(), move |_uuid, _lock| {
+            let cfg = cfg.clone();
+            let guard = Arc::clone(&guard);
+            Box::pin(async move {
+                if guard.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+                    tracing::info!("tick=pipeline skipped (previous run still active)");
+                    return;
+                }
+                pipeline_tick(&cfg).await;
+                guard.store(false, Ordering::SeqCst);
+            })
+        })
+        .with_context(|| {
+            format!(
+                "bad poll_cron '{}' — expected cron like \"0 0 * * * *\"",
+                poll_cron
+            )
+        })?;
+        sched.add(job).await.context("schedule poll job")?;
+    }
+
+    {
+        let cfg = cfg.clone();
+        let watch_cron = cfg.service.watch_cron.clone();
+        let guard = Arc::clone(&watch_guard);
+        let job = Job::new_async(watch_schedule.as_str(), move |_uuid, _lock| {
+            let cfg = cfg.clone();
+            let guard = Arc::clone(&guard);
+            Box::pin(async move {
+                if guard.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+                    tracing::info!("tick=watch skipped (previous run still active)");
+                    return;
+                }
+                watch_tick(&cfg).await;
+                guard.store(false, Ordering::SeqCst);
+            })
+        })
+        .with_context(|| {
+            format!(
+                "bad watch_cron '{}' — expected cron like \"0 */2 * * * *\"",
+                watch_cron
+            )
+        })?;
+        sched.add(job).await.context("schedule watch job")?;
+    }
+
+    sched.start().await.context("run cron scheduler")?;
+    tracing::info!(
+        poll = %cfg.service.poll_cron,
+        watch = %cfg.service.watch_cron,
+        "scheduler started (UTC)"
+    );
+
+    ipc::serve_with_shutdown(&cfg, async {
+        if tokio::signal::ctrl_c().await.is_err() {
+            tracing::error!("shutdown signal handler failed");
+        }
+    })
+    .await?;
+
+    tracing::info!("shutting down scheduler");
+    sched.shutdown().await.context("stop cron scheduler")?;
+    tracing::info!("formless-hands stopped");
     Ok(())
 }

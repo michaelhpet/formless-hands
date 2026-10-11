@@ -8,6 +8,10 @@ build = "core/build.rs"
 name = "formless-hands"
 path = "core/src/main.rs"
 
+[[bin]]
+name = "fh"
+path = "core/src/main.rs"
+
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 clap = { version = "4", features = ["derive"] }
@@ -22,3 +26,4 @@ serde_json = "1"
 include_dir = "0.7"
 rusqlite = { version = "0.31", features = ["bundled"] }
 chrono = { version = "0.4", features = ["serde"] }
+tokio-cron-scheduler = "0.15.1"
