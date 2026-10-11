@@ -26,7 +26,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { INITIAL_PROJECTS } from "@/pages/home";
+import { useProjects } from "@/lib/api/projects";
 
 const TABS = [
 	{ to: "/$projectId/tasks", label: "Tasks" },
@@ -40,7 +40,13 @@ export function ProjectLayout() {
 	const navigate = useNavigate();
 	const router = useRouter();
 	const canGoBack = useCanGoBack();
-	const project = INITIAL_PROJECTS.find((item) => item.id === projectId);
+	const projectsQuery = useProjects();
+	const projects = (projectsQuery.data ?? []).map((item) => ({
+		id: item.name,
+		name: item.name,
+		status: item.status,
+	}));
+	const project = projects.find((item) => item.id === projectId);
 
 	const goBack = () => {
 		if (canGoBack) {
@@ -72,7 +78,9 @@ export function ProjectLayout() {
 							<span
 								className={cn(
 									"size-1.5 rounded-full",
-									project?.status === "error" ? "bg-destructive" : "bg-success",
+									project && project.status !== "connected"
+										? "bg-destructive"
+										: "bg-success",
 								)}
 								aria-hidden="true"
 							/>
@@ -81,7 +89,7 @@ export function ProjectLayout() {
 						<SelectContent>
 							<SelectGroup>
 								<SelectLabel>Projects</SelectLabel>
-								{INITIAL_PROJECTS.map((item) => (
+								{projects.map((item) => (
 									<SelectItem key={item.id} value={item.id}>
 										{item.name}
 									</SelectItem>
@@ -119,7 +127,7 @@ export function ProjectLayout() {
 				</div>
 			</header>
 			<main className="flex w-full flex-1 flex-col">
-				{project ? (
+				{project || projectsQuery.isLoading ? (
 					<Outlet />
 				) : (
 					<div className="flex w-full flex-1 items-center justify-center px-5 py-16">

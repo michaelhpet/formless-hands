@@ -32,7 +32,7 @@ export interface ProjectsSearch {
 
 export interface TasksSearch {
 	q?: string;
-	source?: "linear" | "github";
+	source?: "linear" | "github" | "fh";
 	status?: TaskStatus;
 	view?: TaskView;
 	page?: number;
@@ -136,7 +136,9 @@ const tasksRoute = createRoute({
 	validateSearch: (search: Record<string, unknown>): TasksSearch => ({
 		q: parseText(search.q),
 		source:
-			search.source === "linear" || search.source === "github"
+			search.source === "linear" ||
+			search.source === "github" ||
+			search.source === "fh"
 				? search.source
 				: undefined,
 		status:

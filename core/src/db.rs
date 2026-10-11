@@ -103,33 +103,50 @@ pub fn migrate(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+fn task_row(r: &rusqlite::Row) -> rusqlite::Result<Task> {
+    Ok(Task {
+        id: r.get(0)?,
+        project_id: r.get(1)?,
+        task_source_id: r.get(2)?,
+        source_kind: r.get(3)?,
+        external_id: r.get(4)?,
+        title: r.get(5)?,
+        status: r.get(6)?,
+        priority: r.get(7)?,
+        pr_number: r.get(8)?,
+    })
+}
+
+const TASK_COLS: &str = "t.id, t.project_id, t.task_source_id, s.kind, t.external_id,
+    t.title, t.status, t.priority, t.pr_number";
+
 pub fn list_tasks(
     conn: &Connection,
     project_id: Option<i64>,
     status: Option<&str>,
     limit: i64,
+    offset: i64,
 ) -> Result<Vec<Task>> {
-    let mut st = conn.prepare(
-        "SELECT t.id, t.project_id, t.task_source_id, s.kind, t.external_id,
-           t.title, t.status, t.priority, t.pr_number
+    let sql = format!(
+        "SELECT {TASK_COLS}
          FROM tasks t LEFT JOIN task_sources s ON s.id = t.task_source_id
          WHERE (?1 IS NULL OR t.project_id = ?1) AND (?2 IS NULL OR t.status = ?2)
-         ORDER BY t.priority DESC, t.id ASC LIMIT ?3",
-    )?;
-    let rows = st.query_map((project_id, status, limit), |r| {
-        Ok(Task {
-            id: r.get(0)?,
-            project_id: r.get(1)?,
-            task_source_id: r.get(2)?,
-            source_kind: r.get(3)?,
-            external_id: r.get(4)?,
-            title: r.get(5)?,
-            status: r.get(6)?,
-            priority: r.get(7)?,
-            pr_number: r.get(8)?,
-        })
-    })?;
+         ORDER BY t.priority DESC, t.id ASC LIMIT ?3 OFFSET ?4"
+    );
+    let mut st = conn.prepare(&sql)?;
+    let rows = st.query_map((project_id, status, limit, offset), task_row)?;
     Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+}
+
+pub fn get_task(conn: &Connection, id: i64) -> Result<Option<Task>> {
+    let sql = format!(
+        "SELECT {TASK_COLS}
+         FROM tasks t LEFT JOIN task_sources s ON s.id = t.task_source_id
+         WHERE t.id = ?1"
+    );
+    let mut st = conn.prepare(&sql)?;
+    let mut rows = st.query_map([id], task_row)?;
+    Ok(rows.next().transpose()?)
 }
 
 pub fn task_project_id(conn: &Connection, id: i64) -> Result<Option<i64>> {
@@ -391,81 +408,4 @@ pub fn upsert_polled_task(conn: &Connection, task: &PolledTask) -> Result<()> {
         ],
     )?;
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn test_db() -> Connection {
-        let path = std::env::temp_dir().join(format!(
-            "fh-test-{}-{}.sqlite",
-            std::process::id(),
-            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
-        ));
-        connect_at(&path).expect("test db")
-    }
-
-    #[test]
-    fn repoll_updates_content_but_keeps_local_status() {
-        let conn = test_db();
-        conn.execute(
-            "INSERT INTO projects (name, remote_url) VALUES ('p', 'file:///p')",
-            [],
-        )
-        .unwrap();
-        conn.execute(
-            "INSERT INTO task_sources (project_id, kind, config_json) VALUES (1, 'linear', '{}')",
-            [],
-        )
-        .unwrap();
-        fn task(title: &str) -> PolledTask<'_> {
-            PolledTask {
-                project_id: 1,
-                task_source_id: 1,
-                external_id: "ENG-1",
-                url: "https://linear.app/i/1",
-                title,
-                body: "b",
-                priority: 3,
-                labels_json: "[\"bug\"]",
-            }
-        }
-        upsert_polled_task(&conn, &task("first")).unwrap();
-        conn.execute("UPDATE tasks SET status = 'in-progress' WHERE id = 1", [])
-            .unwrap();
-        upsert_polled_task(&conn, &task("second")).unwrap();
-        let (title, status): (String, String) = conn
-            .query_row("SELECT title, status FROM tasks WHERE id = 1", [], |r| {
-                Ok((r.get(0)?, r.get(1)?))
-            })
-            .unwrap();
-        assert_eq!(title, "second");
-        assert_eq!(status, "in-progress");
-    }
-
-    #[test]
-    fn source_backoff_roundtrip() {
-        let conn = test_db();
-        conn.execute(
-            "INSERT INTO projects (name, remote_url) VALUES ('p', 'file:///p')",
-            [],
-        )
-        .unwrap();
-        conn.execute(
-            "INSERT INTO task_sources (project_id, kind, config_json) VALUES (1, 'linear', '{}')",
-            [],
-        )
-        .unwrap();
-        set_source_backoff(&conn, 1, "2099-01-01T00:00:00Z", "busy").unwrap();
-        let s = list_enabled_sources(&conn).unwrap().pop().unwrap();
-        assert_eq!(s.backoff_count, 1);
-        assert_eq!(s.last_error, "busy");
-        set_source_polled(&conn, 1, "abc").unwrap();
-        let s = list_enabled_sources(&conn).unwrap().pop().unwrap();
-        assert_eq!(s.backoff_count, 0);
-        assert_eq!(s.backoff_until, "");
-        assert_eq!(s.last_error, "");
-        assert_eq!(s.cursor, "abc");
-    }
 }

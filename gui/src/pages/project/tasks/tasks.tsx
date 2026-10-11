@@ -1,5 +1,5 @@
 import { IconSearch } from "@tabler/icons-react";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { cn } from "cn";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -31,12 +31,13 @@ import {
 } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useDebounce } from "@/hooks/use-debounce";
+import { useTasks } from "@/lib/api/tasks";
 import type { TasksSearch } from "@/router";
 import { AttentionView } from "./attention-view";
 import { NewTaskDialog, type NewTaskInput } from "./new-task-dialog";
 import { TaskKanban } from "./task-kanban";
 import {
-	INITIAL_TASKS,
+	mapApiTask,
 	SOURCE_LABELS,
 	STATUS_FILTERS,
 	STATUS_LABELS,
@@ -83,13 +84,20 @@ function StatCard({
 }
 
 export function TasksPage() {
-	const [tasks, setTasks] = useState<Task[]>(INITIAL_TASKS);
+	const { projectId } = useParams({ strict: false });
+	const [created, setCreated] = useState<Task[]>([]);
 	const navigate = useNavigate();
 	const search = useSearch({ from: "/$projectId/tasks" });
 	const query = search.q ?? "";
 	const source: SourceFilter = search.source ?? "all";
 	const status: StatusFilter = search.status ?? "all";
 	const view: View = search.view ?? "kanban";
+	const tasksQuery = useTasks({
+		project: projectId,
+		status: status === "all" ? undefined : status,
+		limit: 200,
+	});
+	const tasks = [...created, ...(tasksQuery.data ?? []).map(mapApiTask)];
 
 	const updateSearch = (patch: Partial<TasksSearch>) => {
 		navigate({
@@ -138,7 +146,7 @@ export function TasksPage() {
 	);
 
 	const createTask = (input: NewTaskInput) => {
-		setTasks((prev) => [
+		setCreated((prev) => [
 			{
 				id: `TASK-${prev.length + 1}`,
 				source: input.source,
@@ -184,6 +192,7 @@ export function TasksPage() {
 							<SelectItem value="all">{SOURCE_LABELS.all}</SelectItem>
 							<SelectItem value="linear">{SOURCE_LABELS.linear}</SelectItem>
 							<SelectItem value="github">{SOURCE_LABELS.github}</SelectItem>
+							<SelectItem value="fh">{SOURCE_LABELS.fh}</SelectItem>
 						</SelectContent>
 					</Select>
 					<NewTaskDialog onCreate={createTask} />
@@ -275,7 +284,18 @@ export function TasksPage() {
 				</div>
 			</div>
 
-			{visible.length === 0 ? (
+			{tasksQuery.isLoading ? (
+				<p className="text-muted-foreground">Loading tasks…</p>
+			) : null}
+			{tasksQuery.isError ? (
+				<p className="text-destructive">
+					Couldn't load tasks:{" "}
+					{tasksQuery.error instanceof Error
+						? tasksQuery.error.message
+						: "unknown error"}
+				</p>
+			) : null}
+			{visible.length === 0 && !tasksQuery.isLoading ? (
 				<Empty>
 					<EmptyHeader>
 						<EmptyMedia variant="icon">

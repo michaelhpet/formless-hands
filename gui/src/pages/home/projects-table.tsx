@@ -70,6 +70,36 @@ export interface Project {
 	tasksFailed: number;
 }
 
+export function mapApiProject(
+	project: {
+		name: string;
+		remote_url: string;
+		local_path: string;
+		default_branch: string;
+		status: string;
+		status_detail: string;
+	},
+	sources: { name: string; on: boolean }[],
+	tasksRunning: number,
+	tasksFailed: number,
+): Project {
+	const status: ProjectStatus =
+		project.status === "connected" ? "connected" : "error";
+	return {
+		id: project.name,
+		name: project.name,
+		branch: project.default_branch,
+		updated: "",
+		status,
+		remote: project.remote_url,
+		localPath: project.local_path,
+		error: status === "error" ? project.status_detail || undefined : undefined,
+		sources,
+		tasksRunning,
+		tasksFailed,
+	};
+}
+
 export const INITIAL_PROJECTS: Project[] = [
 	{
 		id: "formless-hands",
@@ -445,7 +475,9 @@ export function ProjectTable({ projects }: { projects: Project[] }) {
 													{project.name}
 												</span>
 												<span className="text-muted-foreground">
-													{project.branch} · {project.updated}
+													{project.updated === ""
+														? project.branch
+														: `${project.branch} · ${project.updated}`}
 												</span>
 											</span>
 										</TableCell>

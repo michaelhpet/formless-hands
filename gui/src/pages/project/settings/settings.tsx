@@ -1,7 +1,7 @@
 import { IconSearch } from "@tabler/icons-react";
 import { Link, useParams } from "@tanstack/react-router";
 import { cn } from "cn";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -15,14 +15,17 @@ import {
 	EmptyTitle,
 } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
-import { INITIAL_PROJECTS } from "@/pages/home";
+import { useProjects } from "@/lib/api/projects";
+import { useSources } from "@/lib/api/sources";
 import { AddSourceDialog } from "./add-source-dialog";
 
 interface EditableSource {
+	id: number;
 	name: string;
 	on: boolean;
 	config: string;
 	cursor: string;
+	lastPolled: string | null;
 }
 
 const SOURCE_DISPLAY: Record<string, string> = {
@@ -50,24 +53,48 @@ function sourceDefaults(name: string): { config: string; cursor: string } {
 
 export function ProjectSettingsPage() {
 	const { projectId } = useParams({ strict: false });
-	const project = INITIAL_PROJECTS.find((item) => item.id === projectId);
-
-	const [name, setName] = useState(project?.name ?? "");
-	const [remote, setRemote] = useState(project?.remote ?? "");
-	const [localPath, setLocalPath] = useState(project?.localPath ?? "");
-	const [branch, setBranch] = useState(project?.branch ?? "");
-	const [baseline, setBaseline] = useState({ name, remote, localPath, branch });
-	const [sources, setSources] = useState<EditableSource[]>(() =>
-		(project?.sources ?? []).map((source) => ({
-			...source,
-			...sourceDefaults(source.name),
-		})),
+	const projectsQuery = useProjects();
+	const sourcesQuery = useSources();
+	const apiProject = (projectsQuery.data ?? []).find(
+		(item) => item.name === projectId,
 	);
+	const project = apiProject
+		? {
+				id: apiProject.name,
+				name: apiProject.name,
+				remote: apiProject.remote_url,
+				localPath: apiProject.local_path,
+				branch: apiProject.default_branch,
+				status: apiProject.status,
+			}
+		: undefined;
+	const liveSources: EditableSource[] = (sourcesQuery.data ?? [])
+		.filter((source) => apiProject && source.project_id === apiProject.id)
+		.map((source) => ({
+			id: source.id,
+			name: source.kind,
+			on: source.enabled,
+			config: source.config_json,
+			cursor: source.cursor,
+			lastPolled: source.last_polled_at,
+		}));
+	const liveKey = `${projectId ?? ""}:${liveSources.map((source) => source.id).join(",")}`;
+	const syncedKey = useRef("");
+	const [name, setName] = useState("");
+	const [remote, setRemote] = useState("");
+	const [localPath, setLocalPath] = useState("");
+	const [branch, setBranch] = useState("");
+	const [baseline, setBaseline] = useState({ name, remote, localPath, branch });
+	const [sources, setSources] = useState<EditableSource[]>([]);
 	const [lastPolled, setLastPolled] = useState("polled 30s ago");
 	const [polling, setPolling] = useState(false);
 	const [savedAt, setSavedAt] = useState<string | null>(null);
 
 	useEffect(() => {
+		if (syncedKey.current === liveKey) {
+			return;
+		}
+		syncedKey.current = liveKey;
 		setName(project?.name ?? "");
 		setRemote(project?.remote ?? "");
 		setLocalPath(project?.localPath ?? "");
@@ -78,14 +105,9 @@ export function ProjectSettingsPage() {
 			localPath: project?.localPath ?? "",
 			branch: project?.branch ?? "",
 		});
-		setSources(
-			(project?.sources ?? []).map((source) => ({
-				...source,
-				...sourceDefaults(source.name),
-			})),
-		);
+		setSources(liveSources);
 		setSavedAt(null);
-	}, [project]);
+	});
 
 	if (!project) {
 		return (
@@ -131,16 +153,16 @@ export function ProjectSettingsPage() {
 		}, 900);
 	};
 
-	const toggleSource = (sourceName: string) => {
+	const toggleSource = (sourceId: number) => {
 		setSources((prev) =>
 			prev.map((source) =>
-				source.name === sourceName ? { ...source, on: !source.on } : source,
+				source.id === sourceId ? { ...source, on: !source.on } : source,
 			),
 		);
 	};
 
-	const removeSource = (sourceName: string) => {
-		setSources((prev) => prev.filter((source) => source.name !== sourceName));
+	const removeSource = (sourceId: number) => {
+		setSources((prev) => prev.filter((source) => source.id !== sourceId));
 	};
 
 	return (
@@ -233,12 +255,22 @@ export function ProjectSettingsPage() {
 						<h2 className="tracking-wide text-muted-foreground">
 							SOURCES · {sources.length}
 						</h2>
-						<span className="text-muted-foreground">{lastPolled}</span>
+						<span className="text-muted-foreground">
+							{(() => {
+								const stamps = liveSources
+									.map((source) => source.lastPolled)
+									.filter((stamp): stamp is string => stamp !== null)
+									.sort();
+								return stamps.length > 0
+									? `last polled ${stamps[stamps.length - 1]}`
+									: lastPolled;
+							})()}
+						</span>
 					</div>
 					<div className="flex flex-col">
 						{sources.map((source) => (
 							<div
-								key={source.name}
+								key={source.id}
 								className="flex items-center gap-3 border-b px-3.5 py-3 last:border-b-0"
 							>
 								<span className="flex items-center gap-1.5 text-[13px] text-foreground">
@@ -257,7 +289,7 @@ export function ProjectSettingsPage() {
 								<span className="grow" />
 								<button
 									type="button"
-									onClick={() => toggleSource(source.name)}
+									onClick={() => toggleSource(source.id)}
 									aria-pressed={source.on}
 									aria-label={`Turn ${sourceDisplay(source.name)} ${source.on ? "off" : "on"}`}
 									className="border bg-muted px-2.5 py-1 hover:bg-muted/50"
@@ -272,7 +304,7 @@ export function ProjectSettingsPage() {
 								</button>
 								<button
 									type="button"
-									onClick={() => removeSource(source.name)}
+									onClick={() => removeSource(source.id)}
 									className="text-destructive hover:underline hover:underline-offset-4"
 								>
 									Remove
@@ -291,10 +323,12 @@ export function ProjectSettingsPage() {
 									setSources((prev) => [
 										...prev,
 										{
+											id: Math.min(0, ...prev.map((source) => source.id)) - 1,
 											name: kind,
 											on: true,
 											config,
 											cursor: sourceDefaults(kind).cursor,
+											lastPolled: null,
 										},
 									])
 								}

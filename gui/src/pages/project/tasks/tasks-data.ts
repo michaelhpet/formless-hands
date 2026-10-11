@@ -9,7 +9,7 @@ export type TaskStatus =
 	| "blocked"
 	| "needs-context";
 
-export type TaskSourceKind = "linear" | "github";
+export type TaskSourceKind = "linear" | "github" | "fh";
 
 export interface Task {
 	id: string;
@@ -88,6 +88,7 @@ export const SOURCE_LABELS: Record<"all" | TaskSourceKind, string> = {
 	all: "All sources",
 	linear: "Linear",
 	github: "GitHub",
+	fh: "fh",
 };
 
 export const STATUS_LABELS: Record<"all" | TaskStatus, string> = {
@@ -232,6 +233,58 @@ export const INITIAL_TASKS: Task[] = [
 		age: "5d",
 	},
 ];
+
+const API_STATUSES: TaskStatus[] = [
+	"open",
+	"triaged",
+	"in-progress",
+	"completed",
+	"in-review",
+	"blocked",
+	"needs-context",
+	"merged",
+	"closed",
+];
+
+export function mapApiTask(task: {
+	external_id: string | null;
+	id: number;
+	source_kind: string | null;
+	title: string;
+	status: string;
+	priority: number;
+	pr_number: number | null;
+}): Task {
+	const status: TaskStatus = API_STATUSES.includes(task.status as TaskStatus)
+		? (task.status as TaskStatus)
+		: "open";
+	const source: TaskSourceKind =
+		task.source_kind === "github"
+			? "github"
+			: task.source_kind === "linear"
+				? "linear"
+				: "fh";
+	const priority =
+		task.priority >= 4
+			? 0
+			: task.priority <= 0
+				? 3
+				: ((4 - task.priority) as 0 | 1 | 2 | 3);
+	const ref =
+		task.pr_number !== null
+			? `PR #${task.pr_number}`
+			: (task.external_id ?? "None");
+	return {
+		id: task.external_id ?? `#${task.id}`,
+		source,
+		title: task.title,
+		status,
+		priority,
+		meta: `${STATUS_LABELS[status]} · ${ref}`,
+		ref,
+		age: "",
+	};
+}
 
 export function columnForStatus(status: TaskStatus): KanbanColumnKey {
 	for (const column of KANBAN_COLUMNS) {

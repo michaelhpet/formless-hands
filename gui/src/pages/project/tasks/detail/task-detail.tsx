@@ -15,7 +15,8 @@ import {
 	EmptyTitle,
 } from "@/components/ui/empty";
 import { Textarea } from "@/components/ui/textarea";
-import { INITIAL_TASKS } from "../tasks-data";
+import { useTask } from "@/lib/api/tasks";
+import { INITIAL_TASKS, mapApiTask } from "../tasks-data";
 import { EditTaskDialog } from "./edit-task-dialog";
 import { NewWorkDialog } from "./new-work-dialog";
 import { getTaskDetail, type TaskDetail } from "./task-detail-data";
@@ -293,7 +294,10 @@ function NotesSection({
 
 export function TaskDetailPage() {
 	const { projectId, taskId } = useParams({ strict: false });
-	const task = INITIAL_TASKS.find((item) => item.id === taskId);
+	const liveTask = useTask(projectId, taskId);
+	const task =
+		(liveTask.data ? mapApiTask(liveTask.data) : undefined) ??
+		INITIAL_TASKS.find((item) => item.id === taskId);
 	const [detail, setDetail] = useState<TaskDetail | null>(
 		task ? getTaskDetail(task) : null,
 	);

@@ -15,13 +15,17 @@ import {
 	EmptyMedia,
 	EmptyTitle,
 } from "@/components/ui/empty";
-import { INITIAL_TASKS } from "../../tasks-data";
+import { useTask } from "@/lib/api/tasks";
+import { INITIAL_TASKS, mapApiTask } from "../../tasks-data";
 import { FinishReviewMenu, type ReviewDecision } from "./finish-review-menu";
 import { getTaskReview, type TaskReview } from "./review-data";
 
 export function TaskReviewPage() {
 	const { projectId, taskId } = useParams({ strict: false });
-	const task = INITIAL_TASKS.find((item) => item.id === taskId);
+	const liveTask = useTask(projectId, taskId);
+	const task =
+		(liveTask.data ? mapApiTask(liveTask.data) : undefined) ??
+		INITIAL_TASKS.find((item) => item.id === taskId);
 	const [review, setReview] = useState<TaskReview | null>(() => {
 		if (!task) {
 			return null;

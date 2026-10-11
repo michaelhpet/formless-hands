@@ -24,6 +24,7 @@ struct TaskQuery {
     project: Option<String>,
     status: Option<String>,
     limit: Option<i64>,
+    page: Option<i64>,
 }
 
 pub fn router() -> Router {
@@ -31,6 +32,7 @@ pub fn router() -> Router {
         .route("/api/projects", get(api_projects))
         .route("/api/sources", get(api_sources))
         .route("/api/tasks", get(api_tasks))
+        .route("/api/tasks/{id}", get(api_task))
         .route("/", get(index))
         .route("/{*path}", get(asset))
 }
@@ -86,9 +88,26 @@ async fn api_tasks(
             return Err(StatusCode::BAD_REQUEST);
         }
     }
-    db::list_tasks(&conn, project_id, q.status.as_deref(), q.limit.unwrap_or(20))
+    let limit = q.limit.unwrap_or(20);
+    if !(1..=500).contains(&limit) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let page = q.page.unwrap_or(1);
+    if page < 1 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let offset = (page - 1) * limit;
+    db::list_tasks(&conn, project_id, q.status.as_deref(), limit, offset)
         .map(Json)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn api_task(Path(id): Path<i64>) -> Result<Json<models::Task>, StatusCode> {
+    let conn = db::connect().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    match db::get_task(&conn, id).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? {
+        Some(t) => Ok(Json(t)),
+        None => Err(StatusCode::NOT_FOUND),
+    }
 }
 
 fn content_type(path: &str) -> &'static str {

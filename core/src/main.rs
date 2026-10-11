@@ -442,7 +442,7 @@ async fn main() -> Result<()> {
                         );
                     }
                 }
-                for t in db::list_tasks(&conn, Some(project_id), status.as_deref(), limit)? {
+                for t in db::list_tasks(&conn, Some(project_id), status.as_deref(), limit, 0)? {
                     let source = t.source_kind.as_deref().unwrap_or("");
                     println!("{:<5} {:<10} {:<12} {}", t.id, t.status, source, t.title);
                 }
