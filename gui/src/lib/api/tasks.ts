@@ -12,11 +12,17 @@ export interface Task {
 	title: string;
 	body?: string;
 	labels?: string;
+	instructions?: string;
 	status: string;
 	priority: number;
 	pr_number: number | null;
 	branch?: string;
 	attempts?: number;
+	backoff_until?: string;
+	backoff_count?: number;
+	decision_at?: string;
+	decision_note?: string;
+	decision_hash?: string;
 }
 
 export interface GetTasksParams {

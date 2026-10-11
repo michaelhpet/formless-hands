@@ -72,11 +72,17 @@ pub struct Task {
     pub title: String,
     pub body: String,
     pub labels: String,
+    pub instructions: String,
     pub status: String,
     pub priority: i64,
     pub pr_number: Option<i64>,
     pub branch: String,
     pub attempts: i64,
+    pub backoff_until: String,
+    pub backoff_count: i64,
+    pub decision_at: String,
+    pub decision_note: String,
+    pub decision_hash: String,
 }
 
 #[derive(Debug)]

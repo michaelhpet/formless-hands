@@ -49,6 +49,9 @@ CREATE TABLE IF NOT EXISTS tasks (
   last_error    TEXT NOT NULL DEFAULT '',
   backoff_until TEXT NOT NULL DEFAULT '',
   backoff_count INTEGER NOT NULL DEFAULT 0,
+  decision_at   TEXT NOT NULL DEFAULT '',
+  decision_note TEXT NOT NULL DEFAULT '',
+  decision_hash TEXT NOT NULL DEFAULT '',
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(task_source_id, external_id)
@@ -113,16 +116,24 @@ fn task_row(r: &rusqlite::Row) -> rusqlite::Result<Task> {
         title: r.get(5)?,
         body: r.get(6)?,
         labels: r.get(7)?,
-        status: r.get(8)?,
-        priority: r.get(9)?,
-        pr_number: r.get(10)?,
-        branch: r.get(11)?,
-        attempts: r.get(12)?,
+        instructions: r.get(8)?,
+        status: r.get(9)?,
+        priority: r.get(10)?,
+        pr_number: r.get(11)?,
+        branch: r.get(12)?,
+        attempts: r.get(13)?,
+        backoff_until: r.get(14)?,
+        backoff_count: r.get(15)?,
+        decision_at: r.get(16)?,
+        decision_note: r.get(17)?,
+        decision_hash: r.get(18)?,
     })
 }
 
 const TASK_COLS: &str = "t.id, t.project_id, t.task_source_id, s.kind, t.external_id,
-    t.title, t.body, t.labels, t.status, t.priority, t.pr_number, t.branch, t.attempts";
+    t.title, t.body, t.labels, t.instructions, t.status, t.priority, t.pr_number,
+    t.branch, t.attempts, t.backoff_until, t.backoff_count,
+    t.decision_at, t.decision_note, t.decision_hash";
 
 pub fn list_tasks(
     conn: &Connection,
@@ -195,6 +206,21 @@ pub fn get_work(conn: &Connection, id: i64) -> Result<Option<Work>> {
     )?;
     let mut rows = st.query_map([id], work_row)?;
     Ok(rows.next().transpose()?)
+}
+
+pub fn record_decision(
+    conn: &Connection,
+    id: i64,
+    status: &str,
+    note: &str,
+    hash: &str,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE tasks SET status = ?1, decision_note = ?2, decision_hash = ?3,
+           decision_at = datetime('now'), updated_at = datetime('now') WHERE id = ?4",
+        rusqlite::params![status, note, hash, id],
+    )?;
+    Ok(())
 }
 
 pub fn task_project_id(conn: &Connection, id: i64) -> Result<Option<i64>> {

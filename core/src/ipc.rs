@@ -3,7 +3,7 @@ use anyhow::{Context, Result};
 use axum::{
     extract::{Path, Query},
     http::{header, HeaderName, StatusCode},
-    routing::{get, post, put},
+    routing::{get, post},
     Json, Router,
 };
 use serde::Deserialize;
