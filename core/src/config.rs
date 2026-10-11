@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 fn default_poll_cron() -> String {
     "0 0 * * * *".into()
@@ -15,7 +15,7 @@ fn default_server_port() -> u16 {
     7770
 }
 
-#[derive(Debug, Deserialize, Clone, Default)]
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct Config {
     #[serde(default)]
     pub service: Service,
@@ -23,7 +23,7 @@ pub struct Config {
     pub server: Server,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 #[allow(dead_code)]
 pub struct Service {
     #[serde(default = "default_poll_cron")]
@@ -34,7 +34,7 @@ pub struct Service {
     pub max_concurrent_workers: usize,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Server {
     #[serde(default = "default_server_port")]
     pub port: u16,
@@ -83,19 +83,46 @@ pub fn normalize_cron(label: &str, expr: &str) -> Result<String> {
     }
 }
 
+pub fn path() -> std::path::PathBuf {
+    expand_home("~/.config/formless-hands/config.toml")
+}
+
+pub fn validate(cfg: &Config) -> Result<()> {
+    normalize_cron("poll_cron", &cfg.service.poll_cron)?;
+    normalize_cron("watch_cron", &cfg.service.watch_cron)?;
+    if !(1..=32).contains(&cfg.service.max_concurrent_workers) {
+        anyhow::bail!(
+            "bad max_concurrent_workers {} — expected 1-32",
+            cfg.service.max_concurrent_workers
+        );
+    }
+    if cfg.server.port == 0 {
+        anyhow::bail!("bad port 0 — expected 1-65535");
+    }
+    Ok(())
+}
+
 pub fn load() -> Result<Config> {
-    let p = expand_home("~/.config/formless-hands/config.toml");
+    let p = path();
     if !p.exists() {
         let cfg = Config::default();
-        normalize_cron("poll_cron", &cfg.service.poll_cron)?;
-        normalize_cron("watch_cron", &cfg.service.watch_cron)?;
+        validate(&cfg)?;
         return Ok(cfg);
     }
     let raw = std::fs::read_to_string(&p).with_context(|| format!("read {}", p.display()))?;
     let cfg: Config = toml::from_str(&raw).with_context(|| format!("parse {}", p.display()))?;
-    normalize_cron("poll_cron", &cfg.service.poll_cron).with_context(|| format!("parse {}", p.display()))?;
-    normalize_cron("watch_cron", &cfg.service.watch_cron)
-        .with_context(|| format!("parse {}", p.display()))?;
+    validate(&cfg).with_context(|| format!("parse {}", p.display()))?;
     Ok(cfg)
+}
+
+pub fn save(cfg: &Config) -> Result<()> {
+    validate(cfg)?;
+    let p = path();
+    if let Some(dir) = p.parent() {
+        std::fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
+    }
+    let raw = toml::to_string(cfg).with_context(|| format!("encode {}", p.display()))?;
+    std::fs::write(&p, raw).with_context(|| format!("write {}", p.display()))?;
+    Ok(())
 }
 

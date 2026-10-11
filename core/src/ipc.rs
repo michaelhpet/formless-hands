@@ -1,9 +1,9 @@
-use crate::{db, models, poller, projects, sources};
+use crate::{config, db, models, poller, projects, sources};
 use anyhow::{Context, Result};
 use axum::{
     extract::{Path, Query},
     http::{header, HeaderName, StatusCode},
-    routing::{get, post},
+    routing::{get, post, put},
     Json, Router,
 };
 use serde::Deserialize;
@@ -43,6 +43,7 @@ pub fn router() -> Router {
         .route("/api/tasks/{id}", get(api_task).patch(api_task_update))
         .route("/api/works", get(api_works))
         .route("/api/works/{id}", get(api_work))
+        .route("/api/config", get(api_config).put(api_config_save))
         .route("/", get(index))
         .route("/{*path}", get(asset))
 }
@@ -379,6 +380,17 @@ async fn api_work(Path(id): Path<i64>) -> Result<Json<models::Work>, StatusCode>
         Some(w) => Ok(Json(w)),
         None => Err(StatusCode::NOT_FOUND),
     }
+}
+
+async fn api_config() -> Result<Json<config::Config>, (StatusCode, String)> {
+    config::load().map(Json).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+async fn api_config_save(
+    Json(body): Json<config::Config>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    config::save(&body).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    Ok(Json(serde_json::json!({ "saved": true, "restart_required": true })))
 }
 
 fn content_type(path: &str) -> &'static str {

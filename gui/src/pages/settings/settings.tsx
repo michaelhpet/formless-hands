@@ -1,15 +1,10 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AppLayout } from "@/components/app-layout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-
-const DEFAULTS = {
-	pollCron: "0 * * * *",
-	watchCron: "*/2 * * * *",
-	maxWorkers: 1,
-	port: "7770",
-};
+import type { AppConfig } from "@/lib/api/settings";
+import { useConfig, useSaveConfig } from "@/lib/api/settings";
 
 function SettingRow({
 	label,
@@ -31,13 +26,49 @@ function SettingRow({
 	);
 }
 
+interface SettingsFields {
+	pollCron: string;
+	watchCron: string;
+	maxWorkers: number;
+	port: string;
+}
+
+function fieldsFrom(config: AppConfig): SettingsFields {
+	return {
+		pollCron: config.service.poll_cron,
+		watchCron: config.service.watch_cron,
+		maxWorkers: config.service.max_concurrent_workers,
+		port: String(config.server.port),
+	};
+}
+
 export function SettingsPage() {
-	const [pollCron, setPollCron] = useState(DEFAULTS.pollCron);
-	const [watchCron, setWatchCron] = useState(DEFAULTS.watchCron);
-	const [maxWorkers, setMaxWorkers] = useState(DEFAULTS.maxWorkers);
-	const [port, setPort] = useState(DEFAULTS.port);
-	const [baseline, setBaseline] = useState(DEFAULTS);
+	const configQuery = useConfig();
+	const saveMutation = useSaveConfig();
+	const initialized = useRef(false);
+	const [pollCron, setPollCron] = useState("");
+	const [watchCron, setWatchCron] = useState("");
+	const [maxWorkers, setMaxWorkers] = useState(1);
+	const [port, setPort] = useState("");
+	const [baseline, setBaseline] = useState<SettingsFields>({
+		pollCron: "",
+		watchCron: "",
+		maxWorkers: 1,
+		port: "",
+	});
 	const [notice, setNotice] = useState<string | null>(null);
+
+	useEffect(() => {
+		if (!initialized.current && configQuery.data) {
+			initialized.current = true;
+			const fields = fieldsFrom(configQuery.data);
+			setPollCron(fields.pollCron);
+			setWatchCron(fields.watchCron);
+			setMaxWorkers(fields.maxWorkers);
+			setPort(fields.port);
+			setBaseline(fields);
+		}
+	}, [configQuery.data]);
 
 	const dirty =
 		pollCron !== baseline.pollCron ||
@@ -46,16 +77,40 @@ export function SettingsPage() {
 		port !== baseline.port;
 
 	const save = () => {
-		setBaseline({ pollCron, watchCron, maxWorkers, port });
-		setNotice("saved just now");
+		saveMutation.mutate(
+			{
+				service: {
+					poll_cron: pollCron.trim(),
+					watch_cron: watchCron.trim(),
+					max_concurrent_workers: maxWorkers,
+				},
+				server: {
+					port: Number(port),
+				},
+			},
+			{
+				onSuccess: () => {
+					setBaseline({ pollCron, watchCron, maxWorkers, port });
+					setNotice("saved · takes effect after daemon restart");
+				},
+				onError: (error) => {
+					setNotice(error instanceof Error ? error.message : "save failed");
+				},
+			},
+		);
 	};
 
 	const reload = () => {
-		setPollCron(baseline.pollCron);
-		setWatchCron(baseline.watchCron);
-		setMaxWorkers(baseline.maxWorkers);
-		setPort(baseline.port);
-		setNotice("reloaded from config.toml");
+		void configQuery.refetch().then(({ data }) => {
+			if (data) {
+				const fields = fieldsFrom(data);
+				setPollCron(fields.pollCron);
+				setWatchCron(fields.watchCron);
+				setMaxWorkers(fields.maxWorkers);
+				setPort(fields.port);
+				setBaseline(fields);
+			}
+		});
 	};
 
 	return (
@@ -73,11 +128,22 @@ export function SettingsPage() {
 						<Button variant="outline" onClick={reload}>
 							Reload
 						</Button>
-						<Button onClick={save} disabled={!dirty}>
-							Save changes
+						<Button onClick={save} disabled={!dirty || saveMutation.isPending}>
+							{saveMutation.isPending ? "Saving..." : "Save changes"}
 						</Button>
 					</div>
 				</div>
+				{configQuery.isLoading ? (
+					<p className="text-muted-foreground">Loading config…</p>
+				) : null}
+				{configQuery.isError ? (
+					<p className="text-destructive">
+						Couldn't load config:{" "}
+						{configQuery.error instanceof Error
+							? configQuery.error.message
+							: "unknown error"}
+					</p>
+				) : null}
 
 				<div className="flex w-full max-w-220 flex-col gap-3">
 					<Card className="gap-0 py-0">
