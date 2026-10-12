@@ -19,6 +19,7 @@ import { useTask } from "@/lib/api/tasks";
 import { mapApiTask, type Task } from "../tasks-data";
 import { EditTaskDialog } from "./edit-task-dialog";
 import { NewWorkDialog } from "./new-work-dialog";
+import { PrCard } from "./pr-card";
 import { getTaskDetail, type TaskDetail } from "./task-detail-data";
 import { TaskDetailSidebar } from "./task-detail-sidebar";
 
@@ -548,6 +549,7 @@ function TaskDetailView({
 
 			<div className="flex w-full items-start gap-4 max-xl:flex-col">
 				<div className="flex min-w-0 flex-1 flex-col gap-3">
+					<PrCard projectName={projectId} task={task} />
 					<DescriptionSection
 						detail={detail}
 						onToggleCriterion={toggleCriterion}

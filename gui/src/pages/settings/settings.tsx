@@ -6,6 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, FieldError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import type { AppConfig } from "@/lib/api/settings";
 import { useConfig, useSaveConfig } from "@/lib/api/settings";
 import { fieldErrors } from "@/lib/form";
@@ -35,6 +42,7 @@ interface SettingsFields {
 	watchCron: string;
 	maxWorkers: number;
 	port: string;
+	mergeMode: string;
 }
 
 function fieldsFrom(config: AppConfig): SettingsFields {
@@ -43,6 +51,7 @@ function fieldsFrom(config: AppConfig): SettingsFields {
 		watchCron: config.service.watch_cron,
 		maxWorkers: config.service.max_concurrent_workers,
 		port: String(config.server.port),
+		mergeMode: config.merge.mode,
 	};
 }
 
@@ -113,6 +122,7 @@ const settingsSchema = z.object({
 	watchCron: trimmedRequired("Watch schedule"),
 	maxWorkers: z.number().check(z.minimum(1), z.maximum(32)),
 	port: portSchema,
+	mergeMode: z.enum(["local", "pr"]),
 });
 
 function SettingsForm({ initial }: { initial: SettingsFields }) {
@@ -131,6 +141,9 @@ function SettingsForm({ initial }: { initial: SettingsFields }) {
 					},
 					server: {
 						port: Number(value.port),
+					},
+					merge: {
+						mode: value.mergeMode,
 					},
 				},
 				{
@@ -243,6 +256,40 @@ function SettingsForm({ initial }: { initial: SettingsFields }) {
 											+
 										</button>
 									</div>
+								)}
+							</form.Field>
+						</SettingRow>
+					</div>
+				</Card>
+
+				<Card className="gap-0 py-0">
+					<h2 className="tracking-wide text-muted-foreground border-b px-3.5 pt-3 pb-2.5">
+						MERGE · AFTER APPROVAL
+					</h2>
+					<div className="flex flex-col divide-y divide-border">
+						<SettingRow
+							label="Merge mode"
+							hint="Local merge into the default branch, or prepare a GitHub PR for you to submit"
+						>
+							<form.Field name="mergeMode">
+								{(field) => (
+									<Select
+										value={field.state.value}
+										onValueChange={(value) => {
+											if (value !== null) {
+												field.handleChange(value);
+											}
+										}}
+										items={{ local: "Local merge", pr: "GitHub PR" }}
+									>
+										<SelectTrigger aria-label="Merge mode" className="w-40">
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectItem value="local">Local merge</SelectItem>
+											<SelectItem value="pr">GitHub PR</SelectItem>
+										</SelectContent>
+									</Select>
 								)}
 							</form.Field>
 						</SettingRow>

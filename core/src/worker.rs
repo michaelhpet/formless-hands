@@ -75,7 +75,7 @@ fn branch_name(task: &models::Task) -> String {
     }
 }
 
-async fn git_worktree_add(checkout: &str, path: &str, branch: &str) -> Result<()> {
+pub(crate) async fn git_worktree_add(checkout: &str, path: &str, branch: &str) -> Result<()> {
     let mut args = vec!["worktree", "add", path];
     if branch_exists(checkout, branch).await {
         args.push(branch);
@@ -147,12 +147,8 @@ pub async fn work_once(_cfg: &Config) -> Result<()> {
 
     let prompt_path = state_file("prompts", task.id, attempt, "md")?;
     let prompt = format!(
-        "# Task {}\n\nSource: {}\nProject: {}\nBranch: {}\nWorktree: {}\n\n## Title\n\n{}\n\n## Body\n\n{}\n\n## Instructions\n\n{}\n",
+        "# Task {}\n\nImplement this task.\n\n## Title\n\n{}\n\n## Body\n\n{}\n\n## Instructions\n\n{}\n\n## Working agreement\n\n- Make one atomic commit per logical change as you go, using conventional commits (feat/fix/docs/chore/refactor/test). Leave nothing uncommitted when you finish.\n- If you cannot proceed, explain why and exit non-zero.\n",
         task.external_id.as_deref().unwrap_or("native"),
-        task.source_kind.as_deref().unwrap_or("fh"),
-        project.name,
-        branch,
-        worktree_str,
         task.title,
         if task.body.trim().is_empty() { "(none)" } else { &task.body },
         if task.instructions.trim().is_empty() { "(none)" } else { &task.instructions },
@@ -185,62 +181,16 @@ pub async fn work_once(_cfg: &Config) -> Result<()> {
         db::insert_work(&conn, task.id, &worktree_str, &branch, &log_path.to_string_lossy())?
     };
 
-    let mut child = match tokio::process::Command::new("opencode")
-        .arg("run")
-        .arg("--format")
-        .arg("json")
-        .arg(&prompt)
-        .current_dir(&worktree_str)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-    {
-        Ok(child) => child,
-        Err(e) => {
-            let msg = format!("opencode not available: {e}");
+    tracing::info!(task = task.id, work = work_id, branch = %branch, "worker: agent running");
+    match run_agent(&worktree_str, &prompt, &log_path, &[]).await {
+        Err(msg) => {
             let conn = db::connect()?;
             finish_failed(&conn, work_id, -1, &msg).ok();
             db::block_task(&conn, task.id, &msg)?;
             tracing::error!(task = task.id, work = work_id, "{msg}");
             return Ok(());
         }
-    };
-    tracing::info!(task = task.id, work = work_id, branch = %branch, "worker: agent running");
-    let mut slot = Some(child);
-    match tokio::time::timeout(
-        std::time::Duration::from_secs(WORK_TIMEOUT_SECS),
-        async { slot.take().expect("child").wait_with_output().await },
-    )
-    .await
-    {
-        Ok(Ok(output)) => {
-            let code = output.status.code().unwrap_or(-1) as i64;
-            append_output(&log_path, &output);
-            let conn = db::connect()?;
-            record_session(&conn, work_id, &log_path);
-            db::finish_work(&conn, work_id, code)?;
-            if code == 0 {
-                db::update_task(&conn, task.id, Some(models::status::COMPLETED), None, None)?;
-                tracing::info!(task = task.id, work = work_id, "worker: completed");
-            } else {
-                let tail = tail_text(&String::from_utf8_lossy(&output.stderr), 2000);
-                let msg = format!("agent exited with code {code}: {tail}");
-                db::block_task(&conn, task.id, &msg)?;
-                tracing::error!(task = task.id, work = work_id, "{msg}");
-            }
-        }
-        Ok(Err(e)) => {
-            let msg = format!("agent wait failed: {e}");
-            finish_failed(&db::connect()?, work_id, -1, &msg).ok();
-            let conn = db::connect()?;
-            db::block_task(&conn, task.id, &msg)?;
-            tracing::error!(task = task.id, work = work_id, "{msg}");
-        }
-        Err(_) => {
-            if let Some(mut child) = slot.take() {
-                let _ = child.kill().await;
-                let _ = child.wait().await;
-            }
+        Ok(outcome) if outcome.timed_out => {
             let msg = format!("agent timed out after {WORK_TIMEOUT_SECS}s");
             finish_failed(&db::connect()?, work_id, 124, &msg).ok();
             let conn = db::connect()?;
@@ -252,6 +202,20 @@ pub async fn work_once(_cfg: &Config) -> Result<()> {
                 &crate::linear::backoff_until_now_plus(crate::linear::backoff_delay_secs(1)),
             )?;
             tracing::warn!(task = task.id, work = work_id, "{msg} — released to triage with backoff");
+            return Ok(());
+        }
+        Ok(outcome) => {
+            let conn = db::connect()?;
+            record_session(&conn, work_id, &log_path);
+            db::finish_work(&conn, work_id, outcome.code)?;
+            if outcome.code == 0 {
+                db::update_task(&conn, task.id, Some(models::status::COMPLETED), None, None)?;
+                tracing::info!(task = task.id, work = work_id, "worker: completed");
+            } else {
+                let msg = format!("agent exited with code {}: {}", outcome.code, outcome.stderr_tail);
+                db::block_task(&conn, task.id, &msg)?;
+                tracing::error!(task = task.id, work = work_id, "{msg}");
+            }
         }
     }
     Ok(())
@@ -268,7 +232,7 @@ fn session_in(value: &serde_json::Value) -> Option<String> {
     None
 }
 
-fn record_session(conn: &rusqlite::Connection, work_id: i64, log_path: &std::path::Path) {
+pub(crate) fn record_session(conn: &rusqlite::Connection, work_id: i64, log_path: &std::path::Path) {
     let Ok(text) = std::fs::read_to_string(log_path) else {
         return;
     };
@@ -293,6 +257,67 @@ fn record_session(conn: &rusqlite::Connection, work_id: i64, log_path: &std::pat
     }
 }
 
+pub(crate) struct AgentOutcome {
+    pub code: i64,
+    pub timed_out: bool,
+    pub stderr_tail: String,
+}
+
+pub(crate) async fn run_agent(
+    worktree: &str,
+    message: &str,
+    log_path: &std::path::Path,
+    extra_args: &[&str],
+) -> Result<AgentOutcome, String> {
+    let mut args = vec!["run"];
+    args.extend(extra_args);
+    args.extend(["--format", "json"]);
+    args.push(message);
+    let child = tokio::process::Command::new("opencode")
+        .args(&args)
+        .current_dir(worktree)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("opencode not available: {e}"))?;
+    let mut slot = Some(child);
+    let output = match tokio::time::timeout(
+        std::time::Duration::from_secs(WORK_TIMEOUT_SECS),
+        async { slot.take().expect("child").wait_with_output().await },
+    )
+    .await
+    {
+        Err(_) => {
+            if let Some(mut child) = slot.take() {
+                let _ = child.kill().await;
+                let _ = child.wait().await;
+            }
+            let outcome = AgentOutcome {
+                code: 124,
+                timed_out: true,
+                stderr_tail: format!("timed out after {WORK_TIMEOUT_SECS}s"),
+            };
+            append_timed_out(log_path);
+            return Ok(outcome);
+        }
+        Ok(Err(e)) => return Err(format!("agent wait failed: {e}")),
+        Ok(Ok(output)) => output,
+    };
+    append_output(log_path, &output);
+    Ok(AgentOutcome {
+        code: output.status.code().unwrap_or(-1) as i64,
+        timed_out: false,
+        stderr_tail: tail_text(&String::from_utf8_lossy(&output.stderr), 2000),
+    })
+}
+
+fn append_timed_out(log_path: &std::path::Path) {
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new().append(true).open(log_path) {
+        let _ = writeln!(f, "--- timed out after {WORK_TIMEOUT_SECS}s ---");
+    }
+}
+
 fn tail_text(s: &str, max: usize) -> String {
     if s.len() <= max {
         return s.trim().to_string();
@@ -310,7 +335,7 @@ fn append_output(log_path: &std::path::Path, output: &std::process::Output) {
     }
 }
 
-fn finish_failed(conn: &rusqlite::Connection, work_id: i64, code: i64, msg: &str) -> Result<()> {
+pub(crate) fn finish_failed(conn: &rusqlite::Connection, work_id: i64, code: i64, msg: &str) -> Result<()> {
     db::finish_work(conn, work_id, code)?;
     let entry = format!("\n--- failed: {msg} ---\n");
     if let Ok(Some(w)) = db::get_work(conn, work_id) {

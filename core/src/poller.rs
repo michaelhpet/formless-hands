@@ -69,7 +69,7 @@ async fn poll_many(sources: &[crate::models::TaskSource]) -> PollTotals {
 fn enabled_sources() -> Result<Vec<crate::models::TaskSource>> {
     let conn = db::connect()?;
     db::migrate(&conn)?;
-    Ok(db::list_enabled_sources(&conn)?)
+    db::list_enabled_sources(&conn)
 }
 
 pub async fn poll_once() -> Result<PollTotals> {

@@ -1,4 +1,6 @@
-use crate::models::{NewProject, NewTask, NewTaskSource, Project, Task, TaskSource, Work};
+use crate::models::{
+    NewProject, NewTask, NewTaskSource, Project, ReviewComment, Task, TaskSource, Work,
+};
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 use std::fs;
@@ -74,6 +76,7 @@ CREATE TABLE IF NOT EXISTS review_comments (
   author    TEXT NOT NULL DEFAULT '',
   body      TEXT NOT NULL DEFAULT '',
   path      TEXT NOT NULL DEFAULT '',
+  kind      TEXT NOT NULL DEFAULT 'comment',
   resolved  INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -290,6 +293,110 @@ pub fn set_work_session(conn: &Connection, id: i64, session_id: &str) -> Result<
     conn.execute(
         "UPDATE works SET session_id = ?1 WHERE id = ?2",
         rusqlite::params![session_id, id],
+    )?;
+    Ok(())
+}
+
+fn review_row(r: &rusqlite::Row) -> rusqlite::Result<ReviewComment> {
+    Ok(ReviewComment {
+        id: r.get(0)?,
+        task_id: r.get(1)?,
+        author: r.get(2)?,
+        body: r.get(3)?,
+        path: r.get(4)?,
+        kind: r.get(5)?,
+        resolved: r.get::<_, i64>(6)? != 0,
+        created_at: r.get(7)?,
+    })
+}
+
+const REVIEW_COLS: &str = "id, task_id, author, body, path, kind, resolved, created_at";
+
+pub fn insert_review(
+    conn: &Connection,
+    task_id: i64,
+    author: &str,
+    body: &str,
+    path: &str,
+    kind: &str,
+    resolved: bool,
+) -> Result<i64> {
+    conn.execute(
+        "INSERT INTO review_comments (task_id, author, body, path, kind, resolved)
+          VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        rusqlite::params![task_id, author, body, path, kind, if resolved { 1i64 } else { 0i64 }],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn list_reviews(conn: &Connection, task_id: i64) -> Result<Vec<ReviewComment>> {
+    let sql = format!("SELECT {REVIEW_COLS} FROM review_comments WHERE task_id = ?1 ORDER BY id");
+    let mut st = conn.prepare(&sql)?;
+    let rows = st.query_map([task_id], review_row)?;
+    Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+}
+
+pub fn latest_decision(conn: &Connection, task_id: i64) -> Result<Option<ReviewComment>> {
+    let sql = format!(
+        "SELECT {REVIEW_COLS} FROM review_comments
+         WHERE task_id = ?1 AND kind IN ('approved', 'changes-requested')
+         ORDER BY id DESC LIMIT 1"
+    );
+    let mut st = conn.prepare(&sql)?;
+    let mut rows = st.query_map([task_id], review_row)?;
+    Ok(rows.next().transpose()?)
+}
+
+pub fn unresolved_changes(conn: &Connection, task_id: i64) -> Result<i64> {
+    Ok(conn.query_row(
+        "SELECT COUNT(*) FROM review_comments
+         WHERE task_id = ?1 AND kind = 'changes-requested' AND resolved = 0",
+        [task_id],
+        |r| r.get(0),
+    )?)
+}
+
+pub fn resolve_changes(conn: &Connection, task_id: i64) -> Result<()> {
+    conn.execute(
+        "UPDATE review_comments SET resolved = 1
+         WHERE task_id = ?1 AND kind = 'changes-requested' AND resolved = 0",
+        [task_id],
+    )?;
+    Ok(())
+}
+
+pub fn latest_work_for_task(conn: &Connection, task_id: i64) -> Result<Option<Work>> {
+    let mut st = conn.prepare(
+        "SELECT w.id, w.task_id, t.external_id, t.title, t.project_id,
+           w.worktree_path, w.branch, w.started_at, w.finished_at, w.exit_code, w.log_path,
+           w.session_id
+         FROM works w JOIN tasks t ON t.id = w.task_id
+         WHERE w.task_id = ?1 ORDER BY w.id DESC LIMIT 1",
+    )?;
+    let mut rows = st.query_map([task_id], work_row)?;
+    Ok(rows.next().transpose()?)
+}
+
+pub fn latest_session_for_task(conn: &Connection, task_id: i64) -> Result<Option<String>> {
+    let mut st = conn.prepare(
+        "SELECT session_id FROM works
+         WHERE task_id = ?1 AND session_id IS NOT NULL AND session_id != ''
+         ORDER BY id DESC LIMIT 1",
+    )?;
+    let mut rows = st.query_map([task_id], |r| r.get::<_, String>(0))?;
+    Ok(rows.next().transpose()?)
+}
+
+pub fn clear_worktree_path(conn: &Connection, id: i64) -> Result<()> {
+    conn.execute("UPDATE works SET worktree_path = '' WHERE id = ?1", [id])?;
+    Ok(())
+}
+
+pub fn begin_attempt(conn: &Connection, id: i64, branch: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE tasks SET status = 'in-progress', locked = 1, attempts = attempts + 1,
+           branch = ?1, updated_at = datetime('now') WHERE id = ?2",
+        rusqlite::params![branch, id],
     )?;
     Ok(())
 }

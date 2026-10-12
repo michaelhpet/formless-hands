@@ -41,6 +41,7 @@ pub fn router() -> Router {
         )
         .route("/api/tasks", get(api_tasks).post(api_task_create))
         .route("/api/tasks/{id}", get(api_task).patch(api_task_update))
+        .route("/api/tasks/{id}/reviews", get(api_reviews).post(api_review_create))
         .route("/api/works", get(api_works))
         .route("/api/works/{id}", get(api_work))
         .route("/api/config", get(api_config).put(api_config_save))
@@ -391,6 +392,78 @@ async fn api_config_save(
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     config::save(&body).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     Ok(Json(serde_json::json!({ "saved": true, "restart_required": true })))
+}
+
+fn task_missing(conn: &rusqlite::Connection, id: i64) -> Result<bool, StatusCode> {
+    db::get_task(conn, id)
+        .map(|t| t.is_none())
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn api_reviews(
+    Path(id): Path<i64>,
+) -> Result<Json<Vec<models::ReviewComment>>, StatusCode> {
+    let conn = db::connect().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if task_missing(&conn, id)? {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    db::list_reviews(&conn, id)
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+#[derive(Deserialize)]
+struct CreateReview {
+    author: Option<String>,
+    body: String,
+    path: Option<String>,
+    kind: Option<String>,
+    resolved: Option<bool>,
+}
+
+async fn api_review_create(
+    Path(id): Path<i64>,
+    Json(body): Json<CreateReview>,
+) -> Result<(StatusCode, Json<models::ReviewComment>), (StatusCode, String)> {
+    let kind = body.kind.as_deref().unwrap_or(models::review_kind::COMMENT);
+    if !models::review_kind::valid(kind) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "invalid kind '{kind}' — one of: {}",
+                models::review_kind::ALL.join(", ")
+            ),
+        ));
+    }
+    if body.body.trim().is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "body must not be empty".to_string()));
+    }
+    let conn = db::connect().map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
+    if task_missing(&conn, id).map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))? {
+        return Err((StatusCode::NOT_FOUND, format!("no task #{id}")));
+    }
+    let resolved = body
+        .resolved
+        .unwrap_or(kind != models::review_kind::CHANGES);
+    let author = body.author.unwrap_or_else(|| "human".to_string());
+    let author = author.trim();
+    let author = if author.is_empty() { "human" } else { author };
+    let review_id = db::insert_review(
+        &conn,
+        id,
+        author,
+        body.body.trim(),
+        body.path.as_deref().unwrap_or(""),
+        kind,
+        resolved,
+    )
+    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
+    let review = db::list_reviews(&conn, id)
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?
+        .into_iter()
+        .find(|r| r.id == review_id)
+        .ok_or((StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
+    Ok((StatusCode::CREATED, Json(review)))
 }
 
 fn content_type(path: &str) -> &'static str {

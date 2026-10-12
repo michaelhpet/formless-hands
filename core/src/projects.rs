@@ -93,6 +93,19 @@ pub async fn origin_of(dir: &Path) -> String {
     }
 }
 
+pub fn github_repo(remote_url: &str) -> Result<(String, String)> {
+    let (host, path) = split_host_path(remote_url)?;
+    if host != "github.com" {
+        anyhow::bail!("not a github remote — got host '{host}'");
+    }
+    let path = path.trim_end_matches(".git").trim_matches('/');
+    let (owner, repo) = path
+        .split_once('/')
+        .filter(|(o, r)| !o.is_empty() && !r.is_empty() && !r.contains('/'))
+        .context("not a github owner/repo remote")?;
+    Ok((owner.to_string(), repo.to_string()))
+}
+
 pub fn is_local_remote(remote_url: &str) -> bool {
     Path::new(remote_url).is_absolute()
 }

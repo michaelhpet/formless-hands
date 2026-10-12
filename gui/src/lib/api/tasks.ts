@@ -123,3 +123,56 @@ export function useUpdateTask() {
 		},
 	});
 }
+
+export const REVIEWS_QUERY_KEY = "reviews";
+
+export interface Review {
+	id: number;
+	task_id: number;
+	author: string;
+	body: string;
+	path: string;
+	kind: string;
+	resolved: boolean;
+	created_at: string;
+}
+
+function getReviews(taskId: number): Promise<Review[]> {
+	return request<Review[]>(`/api/tasks/${taskId}/reviews`);
+}
+
+export function useReviews(taskId: number | undefined) {
+	return useQuery({
+		queryKey: [REVIEWS_QUERY_KEY, taskId ?? null],
+		queryFn: () =>
+			taskId === undefined ? Promise.resolve([]) : getReviews(taskId),
+		enabled: taskId !== undefined,
+	});
+}
+
+export interface CreateReviewParams {
+	taskId: number;
+	body: string;
+	kind?: string;
+}
+
+function createReview(params: CreateReviewParams): Promise<Review> {
+	return request<Review>(`/api/tasks/${params.taskId}/reviews`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ body: params.body, kind: params.kind }),
+	});
+}
+
+export function useCreateReview() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: createReview,
+		onSuccess: (_review, params) => {
+			void queryClient.invalidateQueries({
+				queryKey: [REVIEWS_QUERY_KEY, params.taskId],
+			});
+			void queryClient.invalidateQueries({ queryKey: [TASKS_QUERY_KEY] });
+		},
+	});
+}

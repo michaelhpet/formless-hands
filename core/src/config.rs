@@ -15,12 +15,18 @@ fn default_server_port() -> u16 {
     7770
 }
 
+fn default_merge_mode() -> String {
+    "local".into()
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct Config {
     #[serde(default)]
     pub service: Service,
     #[serde(default)]
     pub server: Server,
+    #[serde(default)]
+    pub merge: Merge,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -38,6 +44,20 @@ pub struct Service {
 pub struct Server {
     #[serde(default = "default_server_port")]
     pub port: u16,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Merge {
+    #[serde(default = "default_merge_mode")]
+    pub mode: String,
+}
+
+impl Default for Merge {
+    fn default() -> Self {
+        Self {
+            mode: default_merge_mode(),
+        }
+    }
 }
 
 impl Default for Server {
@@ -98,6 +118,12 @@ pub fn validate(cfg: &Config) -> Result<()> {
     }
     if cfg.server.port == 0 {
         anyhow::bail!("bad port 0 — expected 1-65535");
+    }
+    if cfg.merge.mode != "local" && cfg.merge.mode != "pr" {
+        anyhow::bail!(
+            "bad merge mode '{}' — expected local or pr",
+            cfg.merge.mode
+        );
     }
     Ok(())
 }

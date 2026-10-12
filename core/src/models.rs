@@ -125,6 +125,32 @@ pub mod status {
     }
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[allow(dead_code)]
+pub struct ReviewComment {
+    pub id: i64,
+    pub task_id: i64,
+    pub author: String,
+    pub body: String,
+    pub path: String,
+    pub kind: String,
+    pub resolved: bool,
+    pub created_at: String,
+}
+
+#[allow(dead_code)]
+pub mod review_kind {
+    pub const COMMENT: &str = "comment";
+    pub const APPROVAL: &str = "approved";
+    pub const CHANGES: &str = "changes-requested";
+
+    pub const ALL: &[&str] = &[COMMENT, APPROVAL, CHANGES];
+
+    pub fn valid(s: &str) -> bool {
+        ALL.contains(&s)
+    }
+}
+
 #[derive(Debug, Serialize)]
 #[allow(dead_code)]
 pub struct Work {

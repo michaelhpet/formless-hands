@@ -15,7 +15,7 @@ import {
 	EmptyMedia,
 	EmptyTitle,
 } from "@/components/ui/empty";
-import { useTask } from "@/lib/api/tasks";
+import { useCreateReview, useTask } from "@/lib/api/tasks";
 import { mapApiTask, type Task } from "../../tasks-data";
 import { FinishReviewMenu, type ReviewDecision } from "./finish-review-menu";
 import { getTaskReview, type TaskReview } from "./review-data";
@@ -71,6 +71,7 @@ function TaskReviewView({
 	projectId: string | undefined;
 	task: Task;
 }) {
+	const createReview = useCreateReview();
 	const prRef = task.ref.startsWith("PR ") ? task.ref.split(" · ")[0] : "None";
 	const [review, setReview] = useState<TaskReview>(() =>
 		getTaskReview(task, prRef),
@@ -204,6 +205,22 @@ function TaskReviewView({
 								setApproved(decision === "approved");
 								const trimmed = message.trim();
 								setSummary(trimmed ? { decision, message: trimmed } : null);
+								const numericId = Number(task.id);
+								if (Number.isInteger(numericId)) {
+									createReview.mutate({
+										taskId: numericId,
+										body:
+											trimmed === ""
+												? decision === "approved"
+													? "Approved"
+													: "Changes requested"
+												: trimmed,
+										kind:
+											decision === "approved"
+												? "approved"
+												: "changes-requested",
+									});
+								}
 							}}
 						/>
 					</div>

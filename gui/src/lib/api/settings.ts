@@ -12,6 +12,9 @@ export interface AppConfig {
 	server: {
 		port: number;
 	};
+	merge: {
+		mode: string;
+	};
 }
 
 function getConfig(): Promise<AppConfig> {

@@ -1,4 +1,6 @@
+import { useForm } from "@tanstack/react-form";
 import { useState } from "react";
+import * as z from "zod/mini";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -11,6 +13,11 @@ import { Textarea } from "@/components/ui/textarea";
 
 export type ReviewDecision = "approved" | "changes-requested";
 
+const reviewSchema = z.object({
+	decision: z.enum(["approved", "changes-requested"]),
+	message: z.string(),
+});
+
 export function FinishReviewMenu({
 	openComments,
 	onSubmit,
@@ -19,12 +26,19 @@ export function FinishReviewMenu({
 	onSubmit: (decision: ReviewDecision, message: string) => void;
 }) {
 	const [open, setOpen] = useState(false);
-	const [message, setMessage] = useState("");
+	const form = useForm({
+		defaultValues: { decision: "", message: "" },
+		validators: { onSubmit: reviewSchema },
+		onSubmit: ({ value }) => {
+			onSubmit(value.decision as ReviewDecision, value.message);
+			form.reset();
+			setOpen(false);
+		},
+	});
 
-	const submit = (decision: ReviewDecision) => {
-		onSubmit(decision, message);
-		setMessage("");
-		setOpen(false);
+	const submitAs = (decision: ReviewDecision) => {
+		form.setFieldValue("decision", decision);
+		void form.handleSubmit();
 	};
 
 	return (
@@ -35,12 +49,17 @@ export function FinishReviewMenu({
 					<DropdownMenuGroup>
 						<DropdownMenuLabel>Review summary</DropdownMenuLabel>
 					</DropdownMenuGroup>
-					<Textarea
-						aria-label="Review summary message"
-						placeholder="Leave a summary message..."
-						value={message}
-						onChange={(event) => setMessage(event.target.value)}
-					/>
+					<form.Field name="message">
+						{(field) => (
+							<Textarea
+								aria-label="Review summary message"
+								placeholder="Leave a summary message..."
+								value={field.state.value}
+								onBlur={field.handleBlur}
+								onChange={(event) => field.handleChange(event.target.value)}
+							/>
+						)}
+					</form.Field>
 					{openComments === 0 ? (
 						<p className="text-muted-foreground">
 							Requesting changes requires at least one open comment.
@@ -51,11 +70,11 @@ export function FinishReviewMenu({
 							variant="outline"
 							size="sm"
 							disabled={openComments === 0}
-							onClick={() => submit("changes-requested")}
+							onClick={() => submitAs("changes-requested")}
 						>
 							Request changes
 						</Button>
-						<Button size="sm" onClick={() => submit("approved")}>
+						<Button size="sm" onClick={() => submitAs("approved")}>
 							Approve
 						</Button>
 					</div>
