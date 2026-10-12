@@ -1,5 +1,7 @@
 mod config;
 mod db;
+mod diff;
+mod explain;
 mod ipc;
 mod linear;
 mod models;

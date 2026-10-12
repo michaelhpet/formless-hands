@@ -1,5 +1,5 @@
 use crate::models::{
-    NewProject, NewTask, NewTaskSource, Project, ReviewComment, Task, TaskSource, Work,
+    DiffNote, NewProject, NewTask, NewTaskSource, Project, ReviewComment, Task, TaskSource, Work,
 };
 use anyhow::{Context, Result};
 use rusqlite::Connection;
@@ -88,6 +88,20 @@ CREATE TABLE IF NOT EXISTS review_comments (
   resolved  INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS diff_notes (
+  id          INTEGER PRIMARY KEY,
+  task_id     INTEGER NOT NULL REFERENCES tasks(id),
+  work_id     INTEGER NOT NULL REFERENCES works(id),
+  commit_sha  TEXT NOT NULL DEFAULT '',
+  path        TEXT NOT NULL DEFAULT '',
+  old_range   TEXT NOT NULL DEFAULT '',
+  new_range   TEXT NOT NULL DEFAULT '',
+  hunk_header TEXT NOT NULL DEFAULT '',
+  body        TEXT NOT NULL DEFAULT '',
+  source      TEXT NOT NULL DEFAULT '',
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_diff_notes_task_work ON diff_notes(task_id, work_id);
 "#;
 
 pub fn db_path() -> std::path::PathBuf {
@@ -344,6 +358,65 @@ pub fn list_reviews(conn: &Connection, task_id: i64) -> Result<Vec<ReviewComment
     let mut st = conn.prepare(&sql)?;
     let rows = st.query_map([task_id], review_row)?;
     Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+}
+
+fn diff_note_row(r: &rusqlite::Row) -> rusqlite::Result<DiffNote> {
+    Ok(DiffNote {
+        id: r.get(0)?,
+        task_id: r.get(1)?,
+        work_id: r.get(2)?,
+        commit_sha: r.get(3)?,
+        path: r.get(4)?,
+        old_range: r.get(5)?,
+        new_range: r.get(6)?,
+        hunk_header: r.get(7)?,
+        body: r.get(8)?,
+        source: r.get(9)?,
+        created_at: r.get(10)?,
+    })
+}
+
+const DIFF_NOTE_COLS: &str =
+    "id, task_id, work_id, commit_sha, path, old_range, new_range, hunk_header, body, source, created_at";
+
+pub fn insert_diff_note(
+    conn: &Connection,
+    task_id: i64,
+    work_id: i64,
+    commit_sha: &str,
+    path: &str,
+    old_range: &str,
+    new_range: &str,
+    hunk_header: &str,
+    body: &str,
+    source: &str,
+) -> Result<i64> {
+    conn.execute(
+        "INSERT INTO diff_notes (task_id, work_id, commit_sha, path, old_range, new_range, hunk_header, body, source)
+          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        rusqlite::params![
+            task_id, work_id, commit_sha, path, old_range, new_range, hunk_header, body, source
+        ],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn list_diff_notes_for_work(
+    conn: &Connection,
+    task_id: i64,
+    work_id: i64,
+) -> Result<Vec<DiffNote>> {
+    let sql = format!(
+        "SELECT {DIFF_NOTE_COLS} FROM diff_notes WHERE task_id = ?1 AND work_id = ?2 ORDER BY id"
+    );
+    let mut st = conn.prepare(&sql)?;
+    let rows = st.query_map(rusqlite::params![task_id, work_id], diff_note_row)?;
+    Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+}
+
+pub fn delete_diff_notes_for_work(conn: &Connection, work_id: i64) -> Result<()> {
+    conn.execute("DELETE FROM diff_notes WHERE work_id = ?1", [work_id])?;
+    Ok(())
 }
 
 pub fn latest_decision(conn: &Connection, task_id: i64) -> Result<Option<ReviewComment>> {

@@ -214,6 +214,12 @@ async fn run_correction(project: &models::Project, task: &models::Task, timeout_
             worker::record_session(&conn, work_id, &log_path);
             db::finish_work(&conn, work_id, outcome.code)?;
             if outcome.code == 0 {
+                drop(conn);
+                match crate::explain::explain_work(task, work_id, &worktree_str, &project.default_branch).await {
+                    Ok(n) => tracing::info!(task = task.id, work = work_id, notes = n, "watcher: explanations stored"),
+                    Err(e) => tracing::warn!(task = task.id, work = work_id, "{e:#} — continuing without notes"),
+                }
+                let conn = db::connect()?;
                 db::resolve_changes(&conn, task.id)?;
                 db::update_task(&conn, task.id, Some(models::status::IN_REVIEW), None, None)?;
                 tracing::info!(task = task.id, work = work_id, "watcher: correction done, awaiting review");

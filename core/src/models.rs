@@ -152,6 +152,22 @@ pub mod review_kind {
     }
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[allow(dead_code)]
+pub struct DiffNote {
+    pub id: i64,
+    pub task_id: i64,
+    pub work_id: i64,
+    pub commit_sha: String,
+    pub path: String,
+    pub old_range: String,
+    pub new_range: String,
+    pub hunk_header: String,
+    pub body: String,
+    pub source: String,
+    pub created_at: String,
+}
+
 #[derive(Debug, Serialize)]
 #[allow(dead_code)]
 pub struct Work {

@@ -1,4 +1,4 @@
-use crate::{config, db, models, poller, projects, sources};
+use crate::{config, db, diff, models, poller, projects, sources};
 use anyhow::{Context, Result};
 use axum::{
     extract::{Path, Query},
@@ -42,6 +42,7 @@ pub fn router() -> Router {
         .route("/api/tasks", get(api_tasks).post(api_task_create))
         .route("/api/tasks/{id}", get(api_task).patch(api_task_update))
         .route("/api/tasks/{id}/reviews", get(api_reviews).post(api_review_create))
+        .route("/api/tasks/{id}/diff", get(api_task_diff))
         .route(
             "/api/tasks/{id}/dependencies",
             get(api_dependencies).post(api_dependency_create),
@@ -469,6 +470,233 @@ async fn api_review_create(
         .find(|r| r.id == review_id)
         .ok_or((StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
     Ok((StatusCode::CREATED, Json(review)))
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ApiDiffNote {
+    body: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ApiDiffLine {
+    no: i64,
+    text: String,
+    kind: String,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ApiReviewReply {
+    author: String,
+    age: String,
+    body: String,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ApiReviewThread {
+    author: String,
+    path: String,
+    state: String,
+    body: String,
+    age: String,
+    replies: Vec<ApiReviewReply>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ApiDiffHunk {
+    old_range: String,
+    new_range: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    header: Option<String>,
+    old_lines: Vec<ApiDiffLine>,
+    new_lines: Vec<ApiDiffLine>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thread: Option<ApiReviewThread>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thread_after_new_line: Option<i64>,
+    notes: Vec<ApiDiffNote>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ApiReviewFile {
+    path: String,
+    stats: String,
+    hunks: Vec<ApiDiffHunk>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ApiTaskReview {
+    task_id: i64,
+    work_id: Option<i64>,
+    commit_sha: String,
+    stale: bool,
+    truncated: bool,
+    files: Vec<ApiReviewFile>,
+}
+
+fn parse_new_range(range: &str) -> Option<(i64, i64)> {
+    if let Some((a, b)) = range.split_once('-') {
+        Some((a.trim().parse().ok()?, b.trim().parse().ok()?))
+    } else {
+        let n: i64 = range.trim().parse().ok()?;
+        Some((n, n))
+    }
+}
+
+fn thread_anchor(path_field: &str) -> Option<(String, Option<i64>)> {
+    let (file, line) = match path_field.split_once(':') {
+        Some((f, l)) => (f.trim().to_string(), l.trim().parse::<i64>().ok()),
+        None => (path_field.trim().to_string(), None),
+    };
+    if file.is_empty() {
+        return None;
+    }
+    Some((file, line))
+}
+
+async fn api_task_diff(Path(id): Path<i64>) -> Result<Json<ApiTaskReview>, StatusCode> {
+    let (task, project, work) = {
+        let conn = db::connect().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let task = db::get_task(&conn, id).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let task = match task {
+            Some(t) => t,
+            None => return Err(StatusCode::NOT_FOUND),
+        };
+        let project = db::get_project_by_id(&conn, task.project_id)
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let work = db::latest_work_for_task(&conn, task.id)
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        (task, project, work)
+    };
+    let empty = |work_id: Option<i64>| {
+        Json(ApiTaskReview {
+            task_id: id,
+            work_id,
+            commit_sha: String::new(),
+            stale: false,
+            truncated: false,
+            files: Vec::new(),
+        })
+    };
+    let work = match work {
+        Some(w) => w,
+        None => return Ok(empty(None)),
+    };
+    if task.branch.is_empty() {
+        return Ok(empty(Some(work.id)));
+    }
+    let project = match project {
+        Some(p) if !p.local_path.is_empty() => p,
+        _ => return Ok(empty(Some(work.id))),
+    };
+    let checkout = crate::config::expand_home(&project.local_path).to_string_lossy().to_string();
+    let parsed = if !work.worktree_path.is_empty() && std::path::Path::new(&work.worktree_path).exists() {
+        match diff::diff_for_worktree(&work.worktree_path, &project.default_branch).await {
+            Ok((p, _)) => p,
+            Err(_) => return Ok(empty(Some(work.id))),
+        }
+    } else {
+        match diff::diff_for_branch(&checkout, &project.default_branch, &task.branch).await {
+            Ok((p, _)) => p,
+            Err(_) => return Ok(empty(Some(work.id))),
+        }
+    };
+
+    let (notes, reviews) = {
+        let conn = db::connect().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let notes = db::list_diff_notes_for_work(&conn, task.id, work.id)
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let reviews = db::list_reviews(&conn, task.id)
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        (notes, reviews)
+    };
+    let current_sha = parsed.commit_sha.clone();
+    let matching: Vec<&models::DiffNote> = if current_sha.is_empty() {
+        notes.iter().collect()
+    } else {
+        let m: Vec<&models::DiffNote> = notes.iter().filter(|n| n.commit_sha == current_sha).collect();
+        if m.is_empty() && !notes.is_empty() {
+            notes.iter().collect()
+        } else {
+            m
+        }
+    };
+    let stale = !notes.is_empty()
+        && !current_sha.is_empty()
+        && notes.iter().any(|n| !n.commit_sha.is_empty() && n.commit_sha != current_sha);
+
+    let mut files: Vec<ApiReviewFile> = Vec::new();
+    for f in &parsed.files {
+        let mut hunks: Vec<ApiDiffHunk> = Vec::new();
+        for h in &f.hunks {
+            let notes = matching
+                .iter()
+                .filter(|n| {
+                    n.path == f.path
+                        && (n.new_range == h.new_range || n.new_range.is_empty())
+                        && (n.hunk_header == h.header || n.hunk_header.is_empty())
+                })
+                .map(|n| ApiDiffNote {
+                    body: n.body.clone(),
+                    source: if n.source.trim().is_empty() { None } else { Some(n.source.clone()) },
+                })
+                .collect::<Vec<_>>();
+            hunks.push(ApiDiffHunk {
+                old_range: h.old_range.clone(),
+                new_range: h.new_range.clone(),
+                header: if h.header.trim().is_empty() { None } else { Some(h.header.clone()) },
+                old_lines: h.old_lines.iter().map(|l| ApiDiffLine { no: l.no, text: l.text.clone(), kind: l.kind.clone() }).collect(),
+                new_lines: h.new_lines.iter().map(|l| ApiDiffLine { no: l.no, text: l.text.clone(), kind: l.kind.clone() }).collect(),
+                thread: None,
+                thread_after_new_line: None,
+                notes,
+            });
+        }
+        files.push(ApiReviewFile { path: f.path.clone(), stats: f.stats.clone(), hunks });
+    }
+
+    for r in &reviews {
+        let Some((file, line)) = thread_anchor(&r.path) else { continue };
+        let target = files.iter_mut().find(|f| f.path == file);
+        let Some(target) = target else { continue };
+        let hunk_idx = match line {
+            Some(n) => target.hunks.iter().position(|h| {
+                parse_new_range(&h.new_range).is_some_and(|(s, e)| n >= s && n <= e)
+            }).or(Some(0)),
+            None => Some(0),
+        };
+        if let Some(i) = hunk_idx {
+            if let Some(h) = target.hunks.get_mut(i) {
+                let replies = Vec::new();
+                h.thread = Some(ApiReviewThread {
+                    author: r.author.clone(),
+                    path: r.path.clone(),
+                    state: if r.resolved { "resolved".to_string() } else { "open".to_string() },
+                    body: r.body.clone(),
+                    age: r.created_at.clone(),
+                    replies,
+                });
+                h.thread_after_new_line = line;
+            }
+        }
+    }
+
+    Ok(Json(ApiTaskReview {
+        task_id: id,
+        work_id: Some(work.id),
+        commit_sha: current_sha,
+        stale,
+        truncated: parsed.truncated,
+        files,
+    }))
 }
 
 async fn api_dependencies(

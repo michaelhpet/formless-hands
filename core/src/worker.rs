@@ -213,6 +213,12 @@ pub async fn work_once(cfg: &Config) -> Result<()> {
             record_session(&conn, work_id, &log_path);
             db::finish_work(&conn, work_id, outcome.code)?;
             if outcome.code == 0 {
+                drop(conn);
+                match crate::explain::explain_work(&task, work_id, &worktree_str, &project.default_branch).await {
+                    Ok(n) => tracing::info!(task = task.id, work = work_id, notes = n, "worker: explanations stored"),
+                    Err(e) => tracing::warn!(task = task.id, work = work_id, "{e:#} — continuing without notes"),
+                }
+                let conn = db::connect()?;
                 db::update_task(&conn, task.id, Some(models::status::COMPLETED), None, None)?;
                 tracing::info!(task = task.id, work = work_id, "worker: completed");
             } else {
