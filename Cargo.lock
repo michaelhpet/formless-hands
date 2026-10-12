@@ -531,6 +531,7 @@ dependencies = [
  "clap",
  "fs2",
  "include_dir",
+ "libc",
  "regex",
  "reqwest",
  "rusqlite",

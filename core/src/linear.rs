@@ -12,6 +12,8 @@ const ISSUES_QUERY: &str = r#"query($teamKey: String!, $after: String) {
       project { name }
       team { key }
       labels(first: 10) { nodes { name } }
+      relations(first: 10) { nodes { type relatedIssue { identifier } } }
+      inverseRelations(first: 10) { nodes { type issue { identifier } } }
     }
     pageInfo { hasNextPage endCursor }
   }
@@ -175,6 +177,7 @@ struct IssueConnection {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct IssueNode {
     #[serde(default)]
     identifier: String,
@@ -192,6 +195,34 @@ struct IssueNode {
     project: Option<IssueProject>,
     #[serde(default)]
     labels: Option<LabelConnection>,
+    #[serde(default)]
+    relations: Option<RelationConnection>,
+    #[serde(default)]
+    inverse_relations: Option<RelationConnection>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RelationConnection {
+    #[serde(default)]
+    nodes: Vec<RelationNode>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RelationNode {
+    #[serde(default)]
+    r#type: String,
+    #[serde(default)]
+    related_issue: Option<IssueRef>,
+    #[serde(default)]
+    issue: Option<IssueRef>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct IssueRef {
+    #[serde(default)]
+    identifier: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -389,6 +420,74 @@ fn in_scope(node: &IssueNode, scope: &Scope) -> bool {
     true
 }
 
+fn is_blocks(relation_type: &str) -> bool {
+    relation_type
+        .chars()
+        .filter(|c| c.is_ascii_alphabetic())
+        .collect::<String>()
+        .eq_ignore_ascii_case("blocks")
+}
+
+fn sync_relations(
+    conn: &rusqlite::Connection,
+    source_id: i64,
+    task_id: i64,
+    node: &IssueNode,
+) -> Result<()> {
+    let mut blockers: Vec<i64> = Vec::new();
+    if let Some(incoming) = &node.inverse_relations {
+        for edge in &incoming.nodes {
+            if !is_blocks(&edge.r#type) {
+                continue;
+            }
+            let identifier = edge.issue.as_ref().map(|i| i.identifier.trim()).unwrap_or("");
+            if identifier.is_empty() {
+                continue;
+            }
+            if let Some(dep) = crate::db::task_id_by_external(conn, source_id, identifier)? {
+                blockers.push(dep);
+            }
+        }
+    }
+    let mut outgoing: Vec<(i64, i64)> = Vec::new();
+    if let Some(relations) = &node.relations {
+        for edge in &relations.nodes {
+            if !is_blocks(&edge.r#type) {
+                continue;
+            }
+            let identifier = edge
+                .related_issue
+                .as_ref()
+                .map(|i| i.identifier.trim())
+                .unwrap_or("");
+            if identifier.is_empty() {
+                continue;
+            }
+            if let Some(other) = crate::db::task_id_by_external(conn, source_id, identifier)? {
+                outgoing.push((other, task_id));
+            }
+        }
+    }
+    crate::db::set_synced_dependencies(conn, task_id, &blockers)?;
+    for (dependent, blocker) in outgoing {
+        if dependent == blocker {
+            continue;
+        }
+        match crate::db::reaches(conn, blocker, dependent) {
+            Ok(true) => {
+                tracing::warn!(task = dependent, blocker, "linear: skipping cyclic blocks edge");
+            }
+            Err(e) => {
+                tracing::warn!(task = dependent, "linear: edge check failed: {e:#}");
+            }
+            Ok(false) => {
+                crate::db::add_dependency(conn, dependent, blocker, "linear")?;
+            }
+        }
+    }
+    Ok(())
+}
+
 fn is_open(node: &IssueNode) -> bool {
     !matches!(
         node.state.as_ref().map(|s| s.r#type.as_str()),
@@ -446,6 +545,9 @@ pub async fn poll_source(source: &crate::models::TaskSource) -> Result<PollStats
     }
     let conn = crate::db::connect()
         .map_err(|e| PollError::Retryable(format!("database unavailable for {what}: {e} — will retry with backoff")))?;
+    let db_error = |e: anyhow::Error| {
+        PollError::Retryable(format!("database write failed for {what}: {e} — will retry with backoff"))
+    };
     let mut upserted = 0usize;
     for node in &collected {
         let labels: Vec<&str> = node
@@ -467,8 +569,22 @@ pub async fn poll_source(source: &crate::models::TaskSource) -> Result<PollStats
                 labels_json: &labels_json,
             },
         )
-        .map_err(|e| PollError::Retryable(format!("database write failed for {what}: {e} — will retry with backoff")))?;
+        .map_err(&db_error)?;
         upserted += 1;
+    }
+    for node in &collected {
+        let task_id = match crate::db::task_id_by_external(&conn, source.id, node.identifier.trim())
+            .map_err(&db_error)?
+        {
+            Some(id) => id,
+            None => {
+                return Err(PollError::Retryable(format!(
+                    "database write failed for {what}: task {} vanished — will retry with backoff",
+                    node.identifier
+                )))
+            }
+        };
+        sync_relations(&conn, source.id, task_id, node).map_err(&db_error)?;
     }
     drop(conn);
     Ok(PollStats { upserted, cursor })

@@ -3,7 +3,7 @@ use anyhow::{Context, Result};
 use axum::{
     extract::{Path, Query},
     http::{header, HeaderName, StatusCode},
-    routing::{get, post},
+    routing::{delete, get, post},
     Json, Router,
 };
 use serde::Deserialize;
@@ -42,6 +42,11 @@ pub fn router() -> Router {
         .route("/api/tasks", get(api_tasks).post(api_task_create))
         .route("/api/tasks/{id}", get(api_task).patch(api_task_update))
         .route("/api/tasks/{id}/reviews", get(api_reviews).post(api_review_create))
+        .route(
+            "/api/tasks/{id}/dependencies",
+            get(api_dependencies).post(api_dependency_create),
+        )
+        .route("/api/tasks/{id}/dependencies/{dep}", delete(api_dependency_delete))
         .route("/api/works", get(api_works))
         .route("/api/works/{id}", get(api_work))
         .route("/api/config", get(api_config).put(api_config_save))
@@ -464,6 +469,74 @@ async fn api_review_create(
         .find(|r| r.id == review_id)
         .ok_or((StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
     Ok((StatusCode::CREATED, Json(review)))
+}
+
+async fn api_dependencies(
+    Path(id): Path<i64>,
+) -> Result<Json<Vec<models::Task>>, StatusCode> {
+    let conn = db::connect().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if task_missing(&conn, id)? {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    db::dependency_tasks(&conn, id)
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+#[derive(Deserialize)]
+struct CreateDependency {
+    depends_on: i64,
+    project: String,
+}
+
+async fn api_dependency_create(
+    Path(id): Path<i64>,
+    Json(body): Json<CreateDependency>,
+) -> Result<(StatusCode, Json<models::Task>), (StatusCode, String)> {
+    let conn = db::connect().map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
+    let want = db::get_project_by_name(&conn, &body.project)
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?
+        .map(|p| p.id)
+        .ok_or((StatusCode::NOT_FOUND, format!("no project named '{}'", body.project)))?;
+    let owner = |tid: i64| -> Result<i64, (StatusCode, String)> {
+        db::task_project_id(&conn, tid)
+            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?
+            .ok_or((StatusCode::NOT_FOUND, format!("no task #{tid}")))
+    };
+    if owner(id)? != want {
+        return Err((StatusCode::NOT_FOUND, format!("no task #{id}")));
+    }
+    if owner(body.depends_on)? != want {
+        return Err((StatusCode::NOT_FOUND, format!("no task #{}", body.depends_on)));
+    }
+    if id == body.depends_on {
+        return Err((StatusCode::BAD_REQUEST, format!("task #{id} cannot depend on itself")));
+    }
+    if db::reaches(&conn, body.depends_on, id)
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?
+    {
+        return Err((StatusCode::CONFLICT, "refusing dependency cycle".to_string()));
+    }
+    db::add_dependency(&conn, id, body.depends_on, "manual")
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
+    let dep = db::get_task(&conn, body.depends_on)
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?
+        .ok_or((StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
+    Ok((StatusCode::CREATED, Json(dep)))
+}
+
+async fn api_dependency_delete(
+    Path((id, dep)): Path<(i64, i64)>,
+) -> Result<StatusCode, StatusCode> {
+    let conn = db::connect().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if task_missing(&conn, id)? {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    if db::remove_dependency(&conn, id, dep).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(StatusCode::NOT_FOUND)
+    }
 }
 
 fn content_type(path: &str) -> &'static str {

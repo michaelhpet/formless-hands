@@ -123,6 +123,20 @@ enum TaskCmd {
         #[arg(long)]
         instructions: Option<String>,
     },
+    Depend {
+        id: i64,
+        #[arg(long)]
+        project: String,
+        #[arg(long)]
+        on: i64,
+    },
+    Undepend {
+        id: i64,
+        #[arg(long)]
+        project: String,
+        #[arg(long)]
+        on: i64,
+    },
 }
 
 fn open_db() -> Result<rusqlite::Connection> {
@@ -385,6 +399,28 @@ async fn main() -> Result<()> {
                 )?;
                 println!("updated task #{id}");
             }
+            TaskCmd::Depend { id, project, on } => {
+                let conn = open_db()?;
+                require_task_in_project(&conn, id, &project)?;
+                require_task_in_project(&conn, on, &project)?;
+                if id == on {
+                    anyhow::bail!("task #{id} cannot depend on itself");
+                }
+                if db::reaches(&conn, on, id)? {
+                    anyhow::bail!("task #{on} already depends on task #{id} — refusing cycle");
+                }
+                db::add_dependency(&conn, id, on, "manual")?;
+                println!("task #{id} now depends on task #{on}");
+            }
+            TaskCmd::Undepend { id, project, on } => {
+                let conn = open_db()?;
+                require_task_in_project(&conn, id, &project)?;
+                if db::remove_dependency(&conn, id, on)? {
+                    println!("task #{id} no longer depends on task #{on}");
+                } else {
+                    anyhow::bail!("task #{id} does not depend on task #{on}");
+                }
+            }
         },
     }
     Ok(())
@@ -491,7 +527,9 @@ async fn run_loops(cfg: config::Config) -> Result<()> {
     ipc::serve_with_shutdown(&cfg, async {
         if tokio::signal::ctrl_c().await.is_err() {
             tracing::error!("shutdown signal handler failed");
+            return;
         }
+        worker::kill_running_agent();
     })
     .await?;
 

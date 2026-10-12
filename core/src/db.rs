@@ -71,6 +71,13 @@ CREATE TABLE IF NOT EXISTS works (
   session_id  TEXT,
   pid         INTEGER
 );
+CREATE TABLE IF NOT EXISTS task_dependencies (
+  task_id INTEGER NOT NULL REFERENCES tasks(id),
+  depends_on_task_id INTEGER NOT NULL REFERENCES tasks(id),
+  origin TEXT NOT NULL DEFAULT 'manual',
+  PRIMARY KEY (task_id, depends_on_task_id),
+  CHECK (task_id != depends_on_task_id)
+);
 CREATE TABLE IF NOT EXISTS review_comments (
   id        INTEGER PRIMARY KEY,
   task_id   INTEGER NOT NULL REFERENCES tasks(id),
@@ -437,6 +444,93 @@ pub fn finished_worktrees(conn: &Connection) -> Result<Vec<(i64, String)>> {
     )?;
     let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
     Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+}
+
+pub fn reaches(conn: &Connection, from: i64, target: i64) -> Result<bool> {
+    let count: i64 = conn.query_row(
+        "WITH RECURSIVE chain(id) AS (
+           SELECT depends_on_task_id FROM task_dependencies WHERE task_id = ?1
+           UNION
+           SELECT d.depends_on_task_id FROM task_dependencies d JOIN chain c ON d.task_id = c.id
+         ) SELECT COUNT(*) FROM chain WHERE id = ?2",
+        rusqlite::params![from, target],
+        |r| r.get(0),
+    )?;
+    Ok(count > 0)
+}
+
+pub fn add_dependency(
+    conn: &Connection,
+    task_id: i64,
+    depends_on: i64,
+    origin: &str,
+) -> Result<()> {
+    conn.execute(
+        "INSERT OR IGNORE INTO task_dependencies (task_id, depends_on_task_id, origin)
+         VALUES (?1, ?2, ?3)",
+        rusqlite::params![task_id, depends_on, origin],
+    )?;
+    Ok(())
+}
+
+pub fn remove_dependency(conn: &Connection, task_id: i64, depends_on: i64) -> Result<bool> {
+    Ok(conn.execute(
+        "DELETE FROM task_dependencies WHERE task_id = ?1 AND depends_on_task_id = ?2",
+        rusqlite::params![task_id, depends_on],
+    )? > 0)
+}
+
+pub fn set_synced_dependencies(
+    conn: &Connection,
+    task_id: i64,
+    depends_on: &[i64],
+) -> Result<()> {
+    conn.execute(
+        "DELETE FROM task_dependencies WHERE task_id = ?1 AND origin = 'linear'",
+        [task_id],
+    )?;
+    for dep in depends_on {
+        conn.execute(
+            "INSERT OR IGNORE INTO task_dependencies (task_id, depends_on_task_id, origin)
+             VALUES (?1, ?2, 'linear')",
+            rusqlite::params![task_id, dep],
+        )?;
+    }
+    Ok(())
+}
+
+pub fn dependency_tasks(conn: &Connection, task_id: i64) -> Result<Vec<Task>> {
+    let sql = format!(
+        "SELECT {TASK_COLS}
+         FROM tasks t LEFT JOIN task_sources s ON s.id = t.task_source_id
+         JOIN task_dependencies d ON d.depends_on_task_id = t.id
+         WHERE d.task_id = ?1 ORDER BY t.id"
+    );
+    let mut st = conn.prepare(&sql)?;
+    let rows = st.query_map([task_id], task_row)?;
+    Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+}
+
+pub fn dependency_statuses(conn: &Connection, task_id: i64) -> Result<Vec<(i64, String)>> {
+    let mut st = conn.prepare(
+        "SELECT t.id, t.status FROM tasks t
+         JOIN task_dependencies d ON d.depends_on_task_id = t.id
+         WHERE d.task_id = ?1 ORDER BY t.id",
+    )?;
+    let rows = st.query_map([task_id], |r| Ok((r.get(0)?, r.get(1)?)))?;
+    Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+}
+
+pub fn task_id_by_external(
+    conn: &Connection,
+    task_source_id: i64,
+    external_id: &str,
+) -> Result<Option<i64>> {
+    let mut st = conn.prepare(
+        "SELECT id FROM tasks WHERE task_source_id = ?1 AND external_id = ?2",
+    )?;
+    let mut rows = st.query_map(rusqlite::params![task_source_id, external_id], |r| r.get(0))?;
+    Ok(rows.next().transpose()?)
 }
 
 pub fn task_project_id(conn: &Connection, id: i64) -> Result<Option<i64>> {

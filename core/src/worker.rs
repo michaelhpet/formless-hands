@@ -268,6 +268,48 @@ pub(crate) struct AgentOutcome {
     pub pid: Option<u32>,
 }
 
+static CURRENT_CHILD_PID: std::sync::atomic::AtomicI64 =
+    std::sync::atomic::AtomicI64::new(0);
+
+struct PidGuard;
+
+impl PidGuard {
+    fn set(pid: u32) -> Self {
+        CURRENT_CHILD_PID.store(pid as i64, std::sync::atomic::Ordering::SeqCst);
+        Self
+    }
+}
+
+impl Drop for PidGuard {
+    fn drop(&mut self) {
+        CURRENT_CHILD_PID.store(0, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+fn leader_alive(pid: i64) -> bool {
+    std::fs::read_to_string(format!("/proc/{pid}/cmdline"))
+        .map(|cmd| cmd.contains("opencode"))
+        .unwrap_or(false)
+}
+
+fn kill_tree(pid: i64, signal: libc::c_int) {
+    unsafe {
+        libc::kill(-(pid as i32), signal);
+    }
+}
+
+pub(crate) fn kill_running_agent() {
+    let pid = CURRENT_CHILD_PID.load(std::sync::atomic::Ordering::SeqCst);
+    if pid <= 0 || !leader_alive(pid) {
+        return;
+    }
+    kill_tree(pid, libc::SIGTERM);
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    if leader_alive(pid) {
+        kill_tree(pid, libc::SIGKILL);
+    }
+}
+
 pub(crate) async fn run_agent(
     worktree: &str,
     message: &str,
@@ -284,9 +326,11 @@ pub(crate) async fn run_agent(
         .current_dir(worktree)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
+        .process_group(0)
         .spawn()
         .map_err(|e| format!("opencode not available: {e}"))?;
     let pid = child.id();
+    let _guard = child.id().map(PidGuard::set);
     let mut slot = Some(child);
     let output = match tokio::time::timeout(
         std::time::Duration::from_secs(timeout_secs),
@@ -296,7 +340,11 @@ pub(crate) async fn run_agent(
     {
         Err(_) => {
             if let Some(mut child) = slot.take() {
-                let _ = child.kill().await;
+                if let Some(pid) = child.id() {
+                    kill_tree(pid as i64, libc::SIGTERM);
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    kill_tree(pid as i64, libc::SIGKILL);
+                }
                 let _ = child.wait().await;
             }
             let outcome = AgentOutcome {

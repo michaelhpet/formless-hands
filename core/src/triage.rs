@@ -64,10 +64,18 @@ pub async fn triage_once(cfg: &Config) -> Result<()> {
     let mut blocked = 0usize;
     let mut recovered = 0usize;
     let mut running = 0usize;
+    let mut waiting_on_deps = 0usize;
 
     for task in db::list_tasks(&conn, None, Some(models::status::OPEN), 500, 0)? {
         if linear::backoff_active(&task.backoff_until) {
             waiting += 1;
+            continue;
+        }
+        let deps_open = db::dependency_statuses(&conn, task.id)?
+            .into_iter()
+            .any(|(_, status)| status != models::status::MERGED && status != models::status::CLOSED);
+        if deps_open {
+            waiting_on_deps += 1;
             continue;
         }
         let hash = content_hash(&task);
@@ -148,6 +156,7 @@ pub async fn triage_once(cfg: &Config) -> Result<()> {
         unblocked,
         parked,
         waiting,
+        waiting_on_deps,
         recovered,
         running,
         "triage: judged open and blocked tasks"
