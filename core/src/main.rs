@@ -131,6 +131,26 @@ fn open_db() -> Result<rusqlite::Connection> {
     Ok(conn)
 }
 
+fn daemon_lock() -> Result<std::fs::File> {
+    let path = crate::config::expand_home("~/.local/share/formless-hands/daemon.lock");
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)
+            .with_context(|| format!("create {}", dir.display()))?;
+    }
+    let file = std::fs::File::create(&path)
+        .with_context(|| format!("open {}", path.display()))?;
+    try_lock(&file).with_context(|| {
+        "another daemon is already running (could not lock daemon.lock)"
+    })?;
+    Ok(file)
+}
+
+fn try_lock(file: &std::fs::File) -> Result<()> {
+    use fs2::FileExt;
+    file.try_lock_exclusive()
+        .map_err(|_| anyhow::anyhow!("locked by another process"))
+}
+
 fn project_id_by_name(conn: &rusqlite::Connection, name: &str) -> Result<i64> {
     Ok(db::get_project_by_name(conn, name)?
         .with_context(|| format!("no project named '{name}'"))?
@@ -166,6 +186,7 @@ async fn main() -> Result<()> {
         Cmd::Run => {
             let cfg = config::load()?;
             drop(open_db()?);
+            let _lock = daemon_lock()?;
             tracing::info!("formless-hands starting");
             run_loops(cfg).await?;
         }

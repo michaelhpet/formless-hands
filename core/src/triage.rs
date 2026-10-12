@@ -36,15 +36,34 @@ fn rule_judge(task: &models::Task) -> Judgment {
     Judgment::Actionable
 }
 
-pub async fn triage_once(_cfg: &Config) -> Result<()> {
+fn agent_alive(pid: Option<i64>) -> bool {
+    let pid = match pid {
+        Some(p) if p > 0 => p,
+        _ => return false,
+    };
+    std::fs::read_to_string(format!("/proc/{pid}/cmdline"))
+        .map(|cmd| cmd.contains("opencode"))
+        .unwrap_or(false)
+}
+
+fn work_age_secs(started_at: &str) -> Option<i64> {
+    let started = chrono::NaiveDateTime::parse_from_str(started_at, "%Y-%m-%d %H:%M:%S").ok()?;
+    let now = chrono::Utc::now().naive_utc();
+    Some((now - started).num_seconds().max(0))
+}
+
+pub async fn triage_once(cfg: &Config) -> Result<()> {
     let conn = db::connect()?;
     db::migrate(&conn)?;
+    let stuck_after = (cfg.service.work_timeout_secs * 2) as i64;
     let mut promoted = 0usize;
     let mut unblocked = 0usize;
     let mut parked = 0usize;
     let mut waiting = 0usize;
     let mut needs_context = 0usize;
     let mut blocked = 0usize;
+    let mut recovered = 0usize;
+    let mut running = 0usize;
 
     for task in db::list_tasks(&conn, None, Some(models::status::OPEN), 500, 0)? {
         if linear::backoff_active(&task.backoff_until) {
@@ -98,6 +117,30 @@ pub async fn triage_once(_cfg: &Config) -> Result<()> {
         }
     }
 
+    for task in db::list_tasks(&conn, None, Some(models::status::IN_PROGRESS), 500, 0)? {
+        let work = db::open_work_for_task(&conn, task.id)?;
+        match work {
+            None => {
+                db::requeue_task(&conn, task.id)?;
+                tracing::info!(task = task.id, "triage: recovered orphan claim");
+                recovered += 1;
+            }
+            Some(w) if agent_alive(w.pid) => {
+                running += 1;
+            }
+            Some(w) => {
+                let old = work_age_secs(&w.started_at).unwrap_or(i64::MAX);
+                if old < stuck_after {
+                    continue;
+                }
+                db::finish_work(&conn, w.id, -2)?;
+                db::requeue_task(&conn, task.id)?;
+                tracing::warn!(task = task.id, work = w.id, age_secs = old, "triage: reaped dead work");
+                recovered += 1;
+            }
+        }
+    }
+
     tracing::info!(
         promoted,
         needs_context,
@@ -105,6 +148,8 @@ pub async fn triage_once(_cfg: &Config) -> Result<()> {
         unblocked,
         parked,
         waiting,
+        recovered,
+        running,
         "triage: judged open and blocked tasks"
     );
     Ok(())

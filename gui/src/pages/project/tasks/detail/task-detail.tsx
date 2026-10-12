@@ -549,6 +549,18 @@ function TaskDetailView({
 
 			<div className="flex w-full items-start gap-4 max-xl:flex-col">
 				<div className="flex min-w-0 flex-1 flex-col gap-3">
+					{detail.lastError ? (
+						<Card>
+							<CardContent className="flex flex-col gap-1">
+								<span className="text-[13px] font-bold text-destructive">
+									Attempt {detail.lastError.attempt} failed
+								</span>
+								<p className="text-[13px] text-foreground">
+									{detail.lastError.text}
+								</p>
+							</CardContent>
+						</Card>
+					) : null}
 					<PrCard projectName={projectId} task={task} />
 					<DescriptionSection
 						detail={detail}

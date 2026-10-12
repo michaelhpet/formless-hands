@@ -78,6 +78,7 @@ pub struct Task {
     pub pr_number: Option<i64>,
     pub branch: String,
     pub attempts: i64,
+    pub last_error: String,
     pub backoff_until: String,
     pub backoff_count: i64,
     pub decision_at: String,
@@ -166,4 +167,5 @@ pub struct Work {
     pub exit_code: Option<i64>,
     pub log_path: String,
     pub session_id: Option<String>,
+    pub pid: Option<i64>,
 }

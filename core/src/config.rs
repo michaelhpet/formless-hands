@@ -10,6 +10,9 @@ fn default_watch_cron() -> String {
 fn default_max_workers() -> usize {
     1
 }
+fn default_work_timeout_secs() -> u64 {
+    1800
+}
 
 fn default_server_port() -> u16 {
     7770
@@ -38,6 +41,8 @@ pub struct Service {
     pub watch_cron: String,
     #[serde(default = "default_max_workers")]
     pub max_concurrent_workers: usize,
+    #[serde(default = "default_work_timeout_secs")]
+    pub work_timeout_secs: u64,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -74,6 +79,7 @@ impl Default for Service {
             poll_cron: default_poll_cron(),
             watch_cron: default_watch_cron(),
             max_concurrent_workers: default_max_workers(),
+            work_timeout_secs: default_work_timeout_secs(),
         }
     }
 }
@@ -118,6 +124,12 @@ pub fn validate(cfg: &Config) -> Result<()> {
     }
     if cfg.server.port == 0 {
         anyhow::bail!("bad port 0 — expected 1-65535");
+    }
+    if !(60..=86400).contains(&cfg.service.work_timeout_secs) {
+        anyhow::bail!(
+            "bad work_timeout_secs {} — expected 60-86400",
+            cfg.service.work_timeout_secs
+        );
     }
     if cfg.merge.mode != "local" && cfg.merge.mode != "pr" {
         anyhow::bail!(

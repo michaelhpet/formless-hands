@@ -169,6 +169,10 @@ function fallbackDetail(task: Task): TaskDetail {
 		attachments: [],
 		reviews: [],
 		notes: [],
+		lastError:
+			task.lastError.trim() === ""
+				? undefined
+				: { attempt: task.attempts, text: task.lastError },
 		works: [],
 		branch:
 			task.branch !== "None"

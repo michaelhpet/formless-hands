@@ -68,7 +68,8 @@ CREATE TABLE IF NOT EXISTS works (
   finished_at TEXT,
   exit_code   INTEGER,
   log_path    TEXT NOT NULL DEFAULT '',
-  session_id  TEXT
+  session_id  TEXT,
+  pid         INTEGER
 );
 CREATE TABLE IF NOT EXISTS review_comments (
   id        INTEGER PRIMARY KEY,
@@ -126,17 +127,18 @@ fn task_row(r: &rusqlite::Row) -> rusqlite::Result<Task> {
         pr_number: r.get(11)?,
         branch: r.get(12)?,
         attempts: r.get(13)?,
-        backoff_until: r.get(14)?,
-        backoff_count: r.get(15)?,
-        decision_at: r.get(16)?,
-        decision_note: r.get(17)?,
-        decision_hash: r.get(18)?,
+        last_error: r.get(14)?,
+        backoff_until: r.get(15)?,
+        backoff_count: r.get(16)?,
+        decision_at: r.get(17)?,
+        decision_note: r.get(18)?,
+        decision_hash: r.get(19)?,
     })
 }
 
 const TASK_COLS: &str = "t.id, t.project_id, t.task_source_id, s.kind, t.external_id,
     t.title, t.body, t.labels, t.instructions, t.status, t.priority, t.pr_number,
-    t.branch, t.attempts, t.backoff_until, t.backoff_count,
+    t.branch, t.attempts, t.last_error, t.backoff_until, t.backoff_count,
     t.decision_at, t.decision_note, t.decision_hash";
 
 pub fn list_tasks(
@@ -182,6 +184,7 @@ fn work_row(r: &rusqlite::Row) -> rusqlite::Result<Work> {
         exit_code: r.get(9)?,
         log_path: r.get(10)?,
         session_id: r.get(11)?,
+        pid: r.get(12)?,
     })
 }
 
@@ -194,7 +197,7 @@ pub fn list_works(
     let mut st = conn.prepare(
         "SELECT w.id, w.task_id, t.external_id, t.title, t.project_id,
            w.worktree_path, w.branch, w.started_at, w.finished_at, w.exit_code, w.log_path,
-           w.session_id
+           w.session_id, w.pid
          FROM works w JOIN tasks t ON t.id = w.task_id
          WHERE (?1 IS NULL OR t.project_id = ?1)
          ORDER BY w.id DESC LIMIT ?2 OFFSET ?3",
@@ -207,7 +210,7 @@ pub fn get_work(conn: &Connection, id: i64) -> Result<Option<Work>> {
     let mut st = conn.prepare(
         "SELECT w.id, w.task_id, t.external_id, t.title, t.project_id,
            w.worktree_path, w.branch, w.started_at, w.finished_at, w.exit_code, w.log_path,
-           w.session_id
+           w.session_id, w.pid
          FROM works w JOIN tasks t ON t.id = w.task_id
          WHERE w.id = ?1",
     )?;
@@ -369,7 +372,7 @@ pub fn latest_work_for_task(conn: &Connection, task_id: i64) -> Result<Option<Wo
     let mut st = conn.prepare(
         "SELECT w.id, w.task_id, t.external_id, t.title, t.project_id,
            w.worktree_path, w.branch, w.started_at, w.finished_at, w.exit_code, w.log_path,
-           w.session_id
+           w.session_id, w.pid
          FROM works w JOIN tasks t ON t.id = w.task_id
          WHERE w.task_id = ?1 ORDER BY w.id DESC LIMIT 1",
     )?;
@@ -399,6 +402,41 @@ pub fn begin_attempt(conn: &Connection, id: i64, branch: &str) -> Result<()> {
         rusqlite::params![branch, id],
     )?;
     Ok(())
+}
+
+pub fn set_work_pid(conn: &Connection, id: i64, pid: i64) -> Result<()> {
+    conn.execute("UPDATE works SET pid = ?1 WHERE id = ?2", rusqlite::params![pid, id])?;
+    Ok(())
+}
+
+pub fn open_work_for_task(conn: &Connection, task_id: i64) -> Result<Option<Work>> {
+    let mut st = conn.prepare(
+        "SELECT w.id, w.task_id, t.external_id, t.title, t.project_id,
+           w.worktree_path, w.branch, w.started_at, w.finished_at, w.exit_code, w.log_path,
+           w.session_id, w.pid
+         FROM works w JOIN tasks t ON t.id = w.task_id
+         WHERE w.task_id = ?1 AND w.finished_at IS NULL ORDER BY w.id DESC LIMIT 1",
+    )?;
+    let mut rows = st.query_map([task_id], work_row)?;
+    Ok(rows.next().transpose()?)
+}
+
+pub fn requeue_task(conn: &Connection, id: i64) -> Result<()> {
+    conn.execute(
+        "UPDATE tasks SET status = 'triaged', locked = 0, updated_at = datetime('now')
+         WHERE id = ?1",
+        [id],
+    )?;
+    Ok(())
+}
+
+pub fn finished_worktrees(conn: &Connection) -> Result<Vec<(i64, String)>> {
+    let mut st = conn.prepare(
+        "SELECT w.id, w.worktree_path FROM works w JOIN tasks t ON t.id = w.task_id
+         WHERE t.status IN ('merged', 'closed') AND w.worktree_path != ''",
+    )?;
+    let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+    Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
 }
 
 pub fn task_project_id(conn: &Connection, id: i64) -> Result<Option<i64>> {

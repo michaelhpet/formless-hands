@@ -41,6 +41,7 @@ interface SettingsFields {
 	pollCron: string;
 	watchCron: string;
 	maxWorkers: number;
+	workTimeoutSecs: string;
 	port: string;
 	mergeMode: string;
 }
@@ -50,6 +51,7 @@ function fieldsFrom(config: AppConfig): SettingsFields {
 		pollCron: config.service.poll_cron,
 		watchCron: config.service.watch_cron,
 		maxWorkers: config.service.max_concurrent_workers,
+		workTimeoutSecs: String(config.service.work_timeout_secs),
 		port: String(config.server.port),
 		mergeMode: config.merge.mode,
 	};
@@ -117,10 +119,20 @@ const trimmedRequired = (label: string) =>
 			z.refine((value: string) => value.trim() !== "", `${label} is required`),
 		);
 
+const timeoutSchema = z.string().check(
+	z.minLength(1, "Timeout is required"),
+	z.regex(/^\d+$/, "Timeout must be a number"),
+	z.refine(
+		(value: string) => Number(value) >= 60 && Number(value) <= 86400,
+		"Timeout must be 60-86400 seconds",
+	),
+);
+
 const settingsSchema = z.object({
 	pollCron: trimmedRequired("Poll schedule"),
 	watchCron: trimmedRequired("Watch schedule"),
 	maxWorkers: z.number().check(z.minimum(1), z.maximum(32)),
+	workTimeoutSecs: timeoutSchema,
 	port: portSchema,
 	mergeMode: z.enum(["local", "pr"]),
 });
@@ -138,6 +150,7 @@ function SettingsForm({ initial }: { initial: SettingsFields }) {
 						poll_cron: value.pollCron.trim(),
 						watch_cron: value.watchCron.trim(),
 						max_concurrent_workers: value.maxWorkers,
+						work_timeout_secs: Number(value.workTimeoutSecs),
 					},
 					server: {
 						port: Number(value.port),
@@ -213,6 +226,31 @@ function SettingsForm({ initial }: { initial: SettingsFields }) {
 											}
 											className="h-8 w-40 bg-background text-right font-mono"
 											spellCheck={false}
+											autoComplete="off"
+										/>
+										<FieldError errors={fieldErrors(field.state.meta.errors)} />
+									</Field>
+								)}
+							</form.Field>
+						</SettingRow>
+						<SettingRow
+							label="Work timeout"
+							hint="Agent run limit in seconds (60-86400)"
+						>
+							<form.Field name="workTimeoutSecs">
+								{(field) => (
+									<Field>
+										<Input
+											aria-label="Work timeout in seconds"
+											value={field.state.value}
+											inputMode="numeric"
+											onBlur={field.handleBlur}
+											onChange={(event) =>
+												field.handleChange(
+													event.target.value.replace(/[^0-9]/g, ""),
+												)
+											}
+											className="h-8 w-40 bg-background text-right font-mono"
 											autoComplete="off"
 										/>
 										<FieldError errors={fieldErrors(field.state.meta.errors)} />

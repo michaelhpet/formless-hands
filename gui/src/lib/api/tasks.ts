@@ -18,6 +18,7 @@ export interface Task {
 	pr_number: number | null;
 	branch?: string;
 	attempts?: number;
+	last_error?: string;
 	backoff_until?: string;
 	backoff_count?: number;
 	decision_at?: string;

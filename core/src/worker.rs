@@ -2,8 +2,6 @@ use crate::config::Config;
 use crate::{db, models};
 use anyhow::{Context, Result};
 
-const WORK_TIMEOUT_SECS: u64 = 1800;
-
 fn state_file(kind: &str, task_id: i64, attempt: i64, ext: &str) -> Result<std::path::PathBuf> {
     let dir = crate::config::expand_home("~/.local/share/formless-hands").join(kind);
     std::fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
@@ -89,7 +87,7 @@ pub(crate) async fn git_worktree_add(checkout: &str, path: &str, branch: &str) -
     anyhow::bail!("git worktree add failed: {err}")
 }
 
-pub async fn work_once(_cfg: &Config) -> Result<()> {
+pub async fn work_once(cfg: &Config) -> Result<()> {
     if db::connect().map(|conn| db::has_open_work(&conn).unwrap_or(true))? {
         tracing::info!("worker: previous work still open, skipping");
         return Ok(());
@@ -182,7 +180,7 @@ pub async fn work_once(_cfg: &Config) -> Result<()> {
     };
 
     tracing::info!(task = task.id, work = work_id, branch = %branch, "worker: agent running");
-    match run_agent(&worktree_str, &prompt, &log_path, &[]).await {
+    match run_agent(&worktree_str, &prompt, &log_path, &[], cfg.service.work_timeout_secs).await {
         Err(msg) => {
             let conn = db::connect()?;
             finish_failed(&conn, work_id, -1, &msg).ok();
@@ -191,9 +189,12 @@ pub async fn work_once(_cfg: &Config) -> Result<()> {
             return Ok(());
         }
         Ok(outcome) if outcome.timed_out => {
-            let msg = format!("agent timed out after {WORK_TIMEOUT_SECS}s");
+            let msg = format!("agent timed out after {}s", cfg.service.work_timeout_secs);
             finish_failed(&db::connect()?, work_id, 124, &msg).ok();
             let conn = db::connect()?;
+            if let Some(pid) = outcome.pid {
+                let _ = db::set_work_pid(&conn, work_id, pid as i64);
+            }
             record_session(&conn, work_id, &log_path);
             db::update_task(&conn, task.id, Some(models::status::TRIAGED), None, None)?;
             db::set_task_backoff(
@@ -206,6 +207,9 @@ pub async fn work_once(_cfg: &Config) -> Result<()> {
         }
         Ok(outcome) => {
             let conn = db::connect()?;
+            if let Some(pid) = outcome.pid {
+                let _ = db::set_work_pid(&conn, work_id, pid as i64);
+            }
             record_session(&conn, work_id, &log_path);
             db::finish_work(&conn, work_id, outcome.code)?;
             if outcome.code == 0 {
@@ -261,6 +265,7 @@ pub(crate) struct AgentOutcome {
     pub code: i64,
     pub timed_out: bool,
     pub stderr_tail: String,
+    pub pid: Option<u32>,
 }
 
 pub(crate) async fn run_agent(
@@ -268,6 +273,7 @@ pub(crate) async fn run_agent(
     message: &str,
     log_path: &std::path::Path,
     extra_args: &[&str],
+    timeout_secs: u64,
 ) -> Result<AgentOutcome, String> {
     let mut args = vec!["run"];
     args.extend(extra_args);
@@ -280,9 +286,10 @@ pub(crate) async fn run_agent(
         .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| format!("opencode not available: {e}"))?;
+    let pid = child.id();
     let mut slot = Some(child);
     let output = match tokio::time::timeout(
-        std::time::Duration::from_secs(WORK_TIMEOUT_SECS),
+        std::time::Duration::from_secs(timeout_secs),
         async { slot.take().expect("child").wait_with_output().await },
     )
     .await
@@ -295,9 +302,10 @@ pub(crate) async fn run_agent(
             let outcome = AgentOutcome {
                 code: 124,
                 timed_out: true,
-                stderr_tail: format!("timed out after {WORK_TIMEOUT_SECS}s"),
+                stderr_tail: format!("timed out after {timeout_secs}s"),
+                pid,
             };
-            append_timed_out(log_path);
+            append_timed_out(log_path, timeout_secs);
             return Ok(outcome);
         }
         Ok(Err(e)) => return Err(format!("agent wait failed: {e}")),
@@ -308,13 +316,14 @@ pub(crate) async fn run_agent(
         code: output.status.code().unwrap_or(-1) as i64,
         timed_out: false,
         stderr_tail: tail_text(&String::from_utf8_lossy(&output.stderr), 2000),
+        pid,
     })
 }
 
-fn append_timed_out(log_path: &std::path::Path) {
+fn append_timed_out(log_path: &std::path::Path, timeout_secs: u64) {
     use std::io::Write;
     if let Ok(mut f) = std::fs::OpenOptions::new().append(true).open(log_path) {
-        let _ = writeln!(f, "--- timed out after {WORK_TIMEOUT_SECS}s ---");
+        let _ = writeln!(f, "--- timed out after {timeout_secs}s ---");
     }
 }
 

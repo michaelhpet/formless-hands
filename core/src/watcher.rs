@@ -22,7 +22,46 @@ pub async fn watch_once(cfg: &Config) -> Result<()> {
             Err(e) => tracing::error!(task = task.id, "{e:#}"),
         }
     }
-    tracing::info!(corrected, merged, prs, "watcher: reviewed completed tasks");
+    let (stale, checkouts) = {
+        let conn = db::connect()?;
+        let stale = db::finished_worktrees(&conn)?;
+        let checkouts: Vec<String> = db::list_projects(&conn)?
+            .into_iter()
+            .filter(|p| !p.local_path.is_empty())
+            .map(|p| {
+                crate::config::expand_home(&p.local_path)
+                    .to_string_lossy()
+                    .to_string()
+            })
+            .collect();
+        (stale, checkouts)
+    };
+    let mut swept = 0usize;
+    for (work_id, path) in stale {
+        if !std::path::Path::new(&path).exists() {
+            if let Ok(conn) = db::connect() {
+                let _ = db::clear_worktree_path(&conn, work_id);
+            }
+            continue;
+        }
+        let mut removed = false;
+        for checkout in &checkouts {
+            if git_in(checkout, &["worktree", "remove", "--force", &path])
+                .await
+                .is_ok()
+            {
+                removed = true;
+                break;
+            }
+        }
+        if removed {
+            if let Ok(conn) = db::connect() {
+                let _ = db::clear_worktree_path(&conn, work_id);
+            }
+            swept += 1;
+        }
+    }
+    tracing::info!(corrected, merged, prs, swept, "watcher: reviewed completed tasks");
     Ok(())
 }
 
@@ -57,7 +96,7 @@ async fn watch_task(cfg: &Config, task: &models::Task) -> Result<WatchAction> {
         )
     };
     if task.status == models::status::COMPLETED && unresolved > 0 {
-        run_correction(&project, task).await?;
+        run_correction(&project, task, cfg.service.work_timeout_secs).await?;
         return Ok(WatchAction::Corrected);
     }
     let approved = matches!(decision, Some(ref d) if d.kind == models::review_kind::APPROVAL);
@@ -86,7 +125,7 @@ fn correction_prompt(task: &models::Task, reviews: &[models::ReviewComment]) -> 
     )
 }
 
-async fn run_correction(project: &models::Project, task: &models::Task) -> Result<()> {
+async fn run_correction(project: &models::Project, task: &models::Task, timeout_secs: u64) -> Result<()> {
     let work = {
         let conn = db::connect()?;
         db::latest_work_for_task(&conn, task.id)?
@@ -145,7 +184,7 @@ async fn run_correction(project: &models::Project, task: &models::Task) -> Resul
         None => vec![],
     };
     tracing::info!(task = task.id, work = work_id, "watcher: correction running");
-    match worker::run_agent(&worktree_str, &prompt, &log_path, &extra).await {
+    match worker::run_agent(&worktree_str, &prompt, &log_path, &extra, timeout_secs).await {
         Err(msg) => {
             let conn = db::connect()?;
             worker::finish_failed(&conn, work_id, -1, &msg).ok();
@@ -156,6 +195,9 @@ async fn run_correction(project: &models::Project, task: &models::Task) -> Resul
             let msg = "correction timed out";
             worker::finish_failed(&db::connect()?, work_id, 124, msg).ok();
             let conn = db::connect()?;
+            if let Some(pid) = outcome.pid {
+                let _ = db::set_work_pid(&conn, work_id, pid as i64);
+            }
             db::update_task(&conn, task.id, Some(models::status::TRIAGED), None, None)?;
             db::set_task_backoff(
                 &conn,
@@ -166,6 +208,9 @@ async fn run_correction(project: &models::Project, task: &models::Task) -> Resul
         }
         Ok(outcome) => {
             let conn = db::connect()?;
+            if let Some(pid) = outcome.pid {
+                let _ = db::set_work_pid(&conn, work_id, pid as i64);
+            }
             worker::record_session(&conn, work_id, &log_path);
             db::finish_work(&conn, work_id, outcome.code)?;
             if outcome.code == 0 {

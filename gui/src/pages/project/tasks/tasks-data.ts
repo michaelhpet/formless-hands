@@ -26,6 +26,7 @@ export interface Task {
 	ref: string;
 	branch: string;
 	attempts: number;
+	lastError: string;
 	age: string;
 }
 
@@ -128,6 +129,7 @@ export const INITIAL_TASKS: Task[] = [
 		labels: [],
 		branch: "None",
 		attempts: 0,
+		lastError: "",
 		status: "blocked",
 		priority: 0,
 		meta: "Blocked · waiting 4d",
@@ -143,6 +145,7 @@ export const INITIAL_TASKS: Task[] = [
 		labels: [],
 		branch: "None",
 		attempts: 0,
+		lastError: "",
 		status: "open",
 		priority: 1,
 		meta: "Open · 6d old",
@@ -158,6 +161,7 @@ export const INITIAL_TASKS: Task[] = [
 		labels: [],
 		branch: "None",
 		attempts: 0,
+		lastError: "",
 		status: "triaged",
 		priority: 1,
 		meta: "Triaged · instructions set",
@@ -173,6 +177,7 @@ export const INITIAL_TASKS: Task[] = [
 		labels: [],
 		branch: "None",
 		attempts: 0,
+		lastError: "",
 		status: "in-progress",
 		priority: 1,
 		meta: "wt-auth-fix · try 2 · 12m",
@@ -188,6 +193,7 @@ export const INITIAL_TASKS: Task[] = [
 		labels: [],
 		branch: "None",
 		attempts: 0,
+		lastError: "",
 		status: "completed",
 		priority: 1,
 		meta: "wt-gui-table · completed · 28m",
@@ -203,6 +209,7 @@ export const INITIAL_TASKS: Task[] = [
 		labels: [],
 		branch: "None",
 		attempts: 0,
+		lastError: "",
 		status: "needs-context",
 		priority: 2,
 		meta: "Needs context · no body",
@@ -218,6 +225,7 @@ export const INITIAL_TASKS: Task[] = [
 		labels: [],
 		branch: "None",
 		attempts: 0,
+		lastError: "",
 		status: "in-review",
 		priority: 2,
 		meta: "PR #412 · 2 comments",
@@ -233,6 +241,7 @@ export const INITIAL_TASKS: Task[] = [
 		labels: [],
 		branch: "None",
 		attempts: 0,
+		lastError: "",
 		status: "triaged",
 		priority: 2,
 		meta: "Triaged · 1d old",
@@ -248,6 +257,7 @@ export const INITIAL_TASKS: Task[] = [
 		labels: [],
 		branch: "None",
 		attempts: 0,
+		lastError: "",
 		status: "merged",
 		priority: 2,
 		meta: "merged · PR #408",
@@ -263,6 +273,7 @@ export const INITIAL_TASKS: Task[] = [
 		labels: [],
 		branch: "None",
 		attempts: 0,
+		lastError: "",
 		status: "open",
 		priority: 3,
 		meta: "Open · 2d old",
@@ -278,6 +289,7 @@ export const INITIAL_TASKS: Task[] = [
 		labels: [],
 		branch: "None",
 		attempts: 0,
+		lastError: "",
 		status: "in-review",
 		priority: 3,
 		meta: "PR #87 · 1 comment",
@@ -293,6 +305,7 @@ export const INITIAL_TASKS: Task[] = [
 		labels: [],
 		branch: "None",
 		attempts: 0,
+		lastError: "",
 		status: "closed",
 		priority: 3,
 		meta: "Closed · no PR",
@@ -357,6 +370,7 @@ export function mapApiTask(task: TaskRecord): Task {
 		ref,
 		branch: task.branch ? task.branch : "None",
 		attempts: task.attempts ?? 0,
+		lastError: task.last_error ?? "",
 		age: "",
 	};
 }

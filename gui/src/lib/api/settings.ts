@@ -8,6 +8,7 @@ export interface AppConfig {
 		poll_cron: string;
 		watch_cron: string;
 		max_concurrent_workers: number;
+		work_timeout_secs: number;
 	};
 	server: {
 		port: number;
