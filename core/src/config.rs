@@ -21,6 +21,18 @@ fn default_server_port() -> u16 {
 fn default_merge_mode() -> String {
     "local".into()
 }
+fn default_prompt_diff_chars() -> usize {
+    60_000
+}
+fn default_transcript_chars() -> usize {
+    8_000
+}
+fn default_commits_chars() -> usize {
+    4_000
+}
+fn default_max_batches() -> usize {
+    4
+}
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct Config {
@@ -30,6 +42,8 @@ pub struct Config {
     pub server: Server,
     #[serde(default)]
     pub merge: Merge,
+    #[serde(default)]
+    pub explain: Explain,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -55,6 +69,29 @@ pub struct Server {
 pub struct Merge {
     #[serde(default = "default_merge_mode")]
     pub mode: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Explain {
+    #[serde(default = "default_prompt_diff_chars")]
+    pub prompt_diff_chars: usize,
+    #[serde(default = "default_transcript_chars")]
+    pub transcript_chars: usize,
+    #[serde(default = "default_commits_chars")]
+    pub commits_chars: usize,
+    #[serde(default = "default_max_batches")]
+    pub max_batches: usize,
+}
+
+impl Default for Explain {
+    fn default() -> Self {
+        Self {
+            prompt_diff_chars: default_prompt_diff_chars(),
+            transcript_chars: default_transcript_chars(),
+            commits_chars: default_commits_chars(),
+            max_batches: default_max_batches(),
+        }
+    }
 }
 
 impl Default for Merge {
@@ -135,6 +172,30 @@ pub fn validate(cfg: &Config) -> Result<()> {
         anyhow::bail!(
             "bad merge mode '{}' — expected local or pr",
             cfg.merge.mode
+        );
+    }
+    if cfg.explain.prompt_diff_chars < 1000 {
+        anyhow::bail!(
+            "bad prompt_diff_chars {} — expected at least 1000",
+            cfg.explain.prompt_diff_chars
+        );
+    }
+    if cfg.explain.transcript_chars < 1000 {
+        anyhow::bail!(
+            "bad transcript_chars {} — expected at least 1000",
+            cfg.explain.transcript_chars
+        );
+    }
+    if cfg.explain.commits_chars < 500 {
+        anyhow::bail!(
+            "bad commits_chars {} — expected at least 500",
+            cfg.explain.commits_chars
+        );
+    }
+    if !(1..=10).contains(&cfg.explain.max_batches) {
+        anyhow::bail!(
+            "bad max_batches {} — expected 1-10",
+            cfg.explain.max_batches
         );
     }
     Ok(())

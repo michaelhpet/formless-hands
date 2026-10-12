@@ -96,7 +96,7 @@ async fn watch_task(cfg: &Config, task: &models::Task) -> Result<WatchAction> {
         )
     };
     if task.status == models::status::COMPLETED && unresolved > 0 {
-        run_correction(&project, task, cfg.service.work_timeout_secs).await?;
+        run_correction(&project, task, cfg.service.work_timeout_secs, &cfg.explain).await?;
         return Ok(WatchAction::Corrected);
     }
     let approved = matches!(decision, Some(ref d) if d.kind == models::review_kind::APPROVAL);
@@ -125,7 +125,7 @@ fn correction_prompt(task: &models::Task, reviews: &[models::ReviewComment]) -> 
     )
 }
 
-async fn run_correction(project: &models::Project, task: &models::Task, timeout_secs: u64) -> Result<()> {
+async fn run_correction(project: &models::Project, task: &models::Task, timeout_secs: u64, explain: &crate::config::Explain) -> Result<()> {
     let work = {
         let conn = db::connect()?;
         db::latest_work_for_task(&conn, task.id)?
@@ -215,7 +215,7 @@ async fn run_correction(project: &models::Project, task: &models::Task, timeout_
             db::finish_work(&conn, work_id, outcome.code)?;
             if outcome.code == 0 {
                 drop(conn);
-                match crate::explain::explain_work(task, work_id, &worktree_str, &project.default_branch).await {
+                match crate::explain::explain_work(task, work_id, &worktree_str, &project.default_branch, explain).await {
                     Ok(n) => tracing::info!(task = task.id, work = work_id, notes = n, "watcher: explanations stored"),
                     Err(e) => tracing::warn!(task = task.id, work = work_id, "{e:#} — continuing without notes"),
                 }

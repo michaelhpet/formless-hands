@@ -3,10 +3,6 @@ use anyhow::{Context, Result};
 use serde::Deserialize;
 
 const EXPLAIN_TIMEOUT_SECS: u64 = 300;
-const MAX_PROMPT_DIFF_CHARS: usize = 60_000;
-const MAX_TRANSCRIPT_CHARS: usize = 8_000;
-const MAX_COMMITS_CHARS: usize = 4_000;
-const MAX_EXPLAIN_BATCHES: usize = 4;
 
 #[derive(Debug, Deserialize)]
 struct NoteDraft {
@@ -99,6 +95,7 @@ pub(crate) async fn explain_work(
     work_id: i64,
     worktree: &str,
     base_branch: &str,
+    explain: &crate::config::Explain,
 ) -> Result<usize> {
     let (parsed, _) = diff::diff_for_worktree(worktree, base_branch).await?;
     if parsed.files.is_empty() {
@@ -136,7 +133,7 @@ pub(crate) async fn explain_work(
     let mut batch_chars = 0usize;
     for (i, h) in explainable.iter().enumerate() {
         let size = h.diff_text.len() + h.summary_line.len();
-        if !batches.last().map(|b| b.is_empty()).unwrap_or(true) && batch_chars + size > MAX_PROMPT_DIFF_CHARS {
+        if !batches.last().map(|b| b.is_empty()).unwrap_or(true) && batch_chars + size > explain.prompt_diff_chars {
             batches.push(Vec::new());
             batch_chars = 0;
         }
@@ -144,23 +141,24 @@ pub(crate) async fn explain_work(
         batch_chars += size;
     }
     let total_batches = batches.len();
-    if total_batches > MAX_EXPLAIN_BATCHES {
+    if total_batches > explain.max_batches {
         tracing::warn!(
             task = task.id, work = work_id,
             total_batches,
-            "explainer: diff exceeds batch budget, explaining first {MAX_EXPLAIN_BATCHES} batches only"
+            max_batches = explain.max_batches,
+            "explainer: diff exceeds batch budget, explaining first batches only"
         );
-        batches.truncate(MAX_EXPLAIN_BATCHES);
+        batches.truncate(explain.max_batches);
     }
 
-    let commits = diff::commit_messages_worktree(worktree, base_branch, MAX_COMMITS_CHARS).await;
+    let commits = diff::commit_messages_worktree(worktree, base_branch, explain.commits_chars).await;
     let transcript_tail = {
         let conn = db::connect()?;
         let log_path = db::get_work(&conn, work_id)?.map(|w| w.log_path).unwrap_or_default();
         if log_path.is_empty() {
             String::new()
         } else {
-            truncate_middle(&std::fs::read_to_string(&log_path).unwrap_or_default(), MAX_TRANSCRIPT_CHARS)
+            truncate_middle(&std::fs::read_to_string(&log_path).unwrap_or_default(), explain.transcript_chars)
         }
     };
 
