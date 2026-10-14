@@ -67,8 +67,6 @@ enum SourceCmd {
         kind: String,
         #[arg(long, short = 's')]
         set: Vec<String>,
-        #[arg(long)]
-        url: Option<String>,
     },
     List {
         #[arg(long)]
@@ -233,15 +231,11 @@ async fn main() -> Result<()> {
             }
         },
         Cmd::Source { cmd } => match cmd {
-            SourceCmd::Add { project, kind, set, url } => {
+            SourceCmd::Add { project, kind, set } => {
                 let conn = open_db()?;
                 let project_id = project_id_by_name(&conn, &project)?;
                 let pairs = sources::parse_set(&set)?;
-                let (config_json, notice) =
-                    sources::resolve_config(&kind, &pairs, url.as_deref()).await?;
-                if let Some(n) = notice {
-                    println!("{n}");
-                }
+                let config_json = sources::resolve_config(&kind, &pairs)?;
                 let planned = sources::PlannedSource {
                     project_id,
                     kind: kind.clone(),

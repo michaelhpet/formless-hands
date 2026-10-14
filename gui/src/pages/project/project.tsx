@@ -64,7 +64,7 @@ export function ProjectLayout() {
 						<BrandLogo />
 					</Link>
 					<Select
-						value={project?.id}
+						value={project?.id ?? projectId}
 						onValueChange={(id) => {
 							if (id) {
 								navigate({

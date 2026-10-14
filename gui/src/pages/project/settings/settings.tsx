@@ -29,7 +29,7 @@ import {
 } from "@/lib/api/sources";
 import { formatStamp } from "@/lib/datetime";
 import { fieldErrors } from "@/lib/form";
-import { AddSourceDialog } from "./add-source-dialog";
+import { AddSourceDialog, type NewSourceInput } from "./add-source-dialog";
 
 interface EditableSource {
 	id: number;
@@ -195,12 +195,28 @@ function ProjectSettingsForm({
 		deleteSourceMutation.mutate(sourceId);
 	};
 
-	const createSource = (kind: string, config: string) => {
+	const createSource = (input: NewSourceInput) => {
 		if (projectId === undefined) {
 			return;
 		}
+		if (input.kind === "linear" && input.team) {
+			const config: Record<string, string> = { team: input.team };
+			if (input.projectName && input.projectSlugId) {
+				config.project = input.projectName;
+				config.projectSlugId = input.projectSlugId;
+			}
+			if (input.label) {
+				config.label = input.label;
+			}
+			createSourceMutation.mutate({
+				project: projectId,
+				kind: input.kind,
+				config,
+			});
+			return;
+		}
 		const parsed: Record<string, string> = {};
-		for (const line of config.split("\n")) {
+		for (const line of (input.config ?? "").split("\n")) {
 			const eq = line.indexOf("=");
 			if (eq === -1) {
 				continue;
@@ -211,7 +227,11 @@ function ProjectSettingsForm({
 				parsed[key] = value;
 			}
 		}
-		createSourceMutation.mutate({ project: projectId, kind, config: parsed });
+		createSourceMutation.mutate({
+			project: projectId,
+			kind: input.kind,
+			config: parsed,
+		});
 	};
 
 	const stamps = sources
@@ -412,7 +432,7 @@ function ProjectSettingsForm({
 						<div className="px-0 py-0">
 							<AddSourceDialog
 								existing={sources.map((source) => source.name)}
-								onCreate={({ kind, config }) => createSource(kind, config)}
+								onCreate={createSource}
 							/>
 						</div>
 					</div>

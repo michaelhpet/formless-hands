@@ -44,7 +44,6 @@ export interface CreateSourceParams {
 	project: string;
 	kind: string;
 	config?: Record<string, string>;
-	url?: string;
 }
 
 function createSource(params: CreateSourceParams): Promise<Source> {
@@ -62,6 +61,66 @@ export function useCreateSource() {
 		onSuccess: () => {
 			void queryClient.invalidateQueries({ queryKey: [SOURCES_QUERY_KEY] });
 		},
+	});
+}
+
+export const LINEAR_TEAMS_QUERY_KEY = "linear-teams";
+export const LINEAR_PROJECTS_QUERY_KEY = "linear-projects";
+
+export interface LinearTeam {
+	key: string;
+	name: string;
+}
+
+export interface LinearProject {
+	name: string;
+	slug_id: string;
+	teams: string[];
+}
+
+function getLinearTeams(): Promise<LinearTeam[]> {
+	return request<LinearTeam[]>("/api/linear/teams");
+}
+
+export function useLinearTeams(enabled = true) {
+	return useQuery({
+		queryKey: [LINEAR_TEAMS_QUERY_KEY],
+		queryFn: getLinearTeams,
+		enabled,
+		retry: 1,
+	});
+}
+
+function getLinearProjects(): Promise<LinearProject[]> {
+	return request<LinearProject[]>("/api/linear/projects");
+}
+
+export function useLinearProjects(enabled = true) {
+	return useQuery({
+		queryKey: [LINEAR_PROJECTS_QUERY_KEY],
+		queryFn: getLinearProjects,
+		enabled,
+		retry: 1,
+	});
+}
+
+export const LINEAR_LABELS_QUERY_KEY = "linear-labels";
+
+export interface LinearLabel {
+	name: string;
+	team: string | null;
+}
+
+function getLinearLabels(): Promise<LinearLabel[]> {
+	return request<LinearLabel[]>("/api/linear/labels");
+}
+
+export function useLinearLabels(enabled = true) {
+	return useQuery({
+		queryKey: [LINEAR_LABELS_QUERY_KEY],
+		queryFn: getLinearLabels,
+		enabled,
+		retry: 1,
 	});
 }
 

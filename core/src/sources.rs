@@ -8,47 +8,18 @@ pub struct PlannedSource {
     pub config_json: String,
 }
 
-pub async fn resolve_config(
-    kind: &str,
-    set: &[(String, String)],
-    url: Option<&str>,
-) -> Result<(String, Option<String>)> {
+pub fn resolve_config(kind: &str, set: &[(String, String)]) -> Result<String> {
     if !models::source_kind::valid(kind) {
         anyhow::bail!(
             "invalid kind '{kind}' — one of: {}",
             models::source_kind::ALL.join(", ")
         );
     }
-    if kind != models::source_kind::LINEAR && url.is_some() {
-        anyhow::bail!("--url is only supported for linear sources");
-    }
-    if url.is_some() && !set.is_empty() {
-        anyhow::bail!("pass either url or key=value pairs, not both");
-    }
     let mut map = serde_json::Map::new();
-    let notice = None;
-    if let Some(link) = url {
-        let scope = linear::parse_linear_url(link)?;
-        if let Some(team) = scope.team {
-            map.insert("team".to_string(), serde_json::Value::String(team));
-        }
-        if let Some(slug) = scope.project_slug {
-            map.insert("projectSlug".to_string(), serde_json::Value::String(slug));
-        }
-        if let Some(slug_id) = scope.project_slug_id {
-            map.insert(
-                "projectSlugId".to_string(),
-                serde_json::Value::String(slug_id),
-            );
-        }
-        if let Some(label) = scope.label {
-            map.insert("label".to_string(), serde_json::Value::String(label));
-        }
-    }
     for (k, v) in set {
         map.insert(k.clone(), serde_json::Value::String(v.clone()));
     }
-    Ok((serde_json::Value::Object(map).to_string(), notice))
+    Ok(serde_json::Value::Object(map).to_string())
 }
 
 pub fn parse_set(set: &[String]) -> Result<Vec<(String, String)>> {

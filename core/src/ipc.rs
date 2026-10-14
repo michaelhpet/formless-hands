@@ -1,4 +1,4 @@
-use crate::{config, db, diff, events, models, poller, projects, sources};
+use crate::{config, db, diff, events, linear, models, poller, projects, sources};
 use anyhow::{Context, Result};
 use axum::{
     extract::{Path, Query},
@@ -54,6 +54,9 @@ pub fn router() -> Router {
         .route("/api/works", get(api_works))
         .route("/api/works/{id}", get(api_work))
         .route("/api/works/{id}/log", get(api_work_log))
+        .route("/api/linear/teams", get(api_linear_teams))
+        .route("/api/linear/projects", get(api_linear_projects))
+        .route("/api/linear/labels", get(api_linear_labels))
         .route("/api/events", get(api_events))
         .route("/api/config", get(api_config).put(api_config_save))
         .route("/", get(index))
@@ -182,18 +185,13 @@ struct CreateSource {
     project: String,
     kind: String,
     config: Option<std::collections::HashMap<String, String>>,
-    url: Option<String>,
 }
 
 async fn api_source_create(
     Json(body): Json<CreateSource>,
 ) -> Result<(StatusCode, Json<models::TaskSource>), (StatusCode, String)> {
-    if body.url.is_some() && body.config.as_ref().is_some_and(|c| !c.is_empty()) {
-        return Err((StatusCode::BAD_REQUEST, "pass either url or config, not both".to_string()));
-    }
     let pairs: Vec<(String, String)> = body.config.unwrap_or_default().into_iter().collect();
-    let (config_json, _) = sources::resolve_config(&body.kind, &pairs, body.url.as_deref())
-        .await
+    let config_json = sources::resolve_config(&body.kind, &pairs)
         .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     let project_id = {
         let conn = db::connect().map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
@@ -486,6 +484,27 @@ async fn api_work_log(Path(id): Path<i64>) -> Result<Json<ApiWorkLog>, StatusCod
         truncated,
         lines,
     }))
+}
+
+async fn api_linear_teams() -> Result<Json<Vec<linear::TeamInfo>>, (StatusCode, String)> {
+    linear::list_teams()
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))
+}
+
+async fn api_linear_projects() -> Result<Json<Vec<linear::ProjectInfo>>, (StatusCode, String)> {
+    linear::list_projects()
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))
+}
+
+async fn api_linear_labels() -> Result<Json<Vec<linear::LabelInfo>>, (StatusCode, String)> {
+    linear::list_labels()
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))
 }
 
 async fn api_events() -> Sse<impl tokio_stream::Stream<Item = Result<SseEvent, Infallible>>> {

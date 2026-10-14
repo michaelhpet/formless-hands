@@ -15,7 +15,7 @@ One binary, two faces: `formless-hands run` is the background service, while `fo
 ```text
 formless-hands run
 formless-hands project add <github-url|local-path> [--path] | list | remove <name>
-formless-hands source add --project <name> --kind <linear|github> [-s key=value ... | --url <linear-link>]
+formless-hands source add --project <name> --kind <linear|github> [-s key=value ...]
              | list --project <name> | remove <id> --project <name>
              | enable <id> --project <name> | disable <id> --project <name>
              | poll --project <name> [id]

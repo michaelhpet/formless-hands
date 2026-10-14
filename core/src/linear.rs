@@ -42,72 +42,6 @@ pub struct Scope {
     pub label: Option<String>,
 }
 
-#[derive(Debug, Default)]
-pub struct LinearUrlScope {
-    pub team: Option<String>,
-    pub project_slug: Option<String>,
-    pub project_slug_id: Option<String>,
-    pub label: Option<String>,
-}
-
-pub fn parse_linear_url(raw: &str) -> Result<LinearUrlScope> {
-    let with_scheme = if raw.contains("://") {
-        raw.to_string()
-    } else {
-        format!("https://{raw}")
-    };
-    let parsed = url::Url::parse(&with_scheme)
-        .map_err(|_| anyhow::anyhow!("'{raw}' is not a Linear URL — expected https://linear.app/<workspace>/team/<KEY>/… or …/project/<slug>-<slug-id>/…"))?;
-    if parsed.host_str() != Some("linear.app") {
-        anyhow::bail!("'{raw}' is not a Linear URL — expected a linear.app link");
-    }
-    let segs: Vec<&str> = parsed.path_segments().map(|s| s.collect()).unwrap_or_default();
-    let pos = |name: &str| {
-        segs.iter().position(|s| s.eq_ignore_ascii_case(name)).and_then(|i| segs.get(i + 1).copied())
-    };
-    let mut scope = LinearUrlScope::default();
-    if let Some(team) = pos("team") {
-        let team = team.trim();
-        if team.is_empty() {
-            anyhow::bail!("'{raw}' has no team key after /team/");
-        }
-        scope.team = Some(team.to_string());
-    }
-    if scope.team.is_none() {
-        if let Some(issue) = pos("issue") {
-            let team = issue.split('-').next().map(str::trim).unwrap_or("");
-            if team.is_empty() {
-                anyhow::bail!("'{raw}' has no team prefix in the issue key");
-            }
-            scope.team = Some(team.to_string());
-        }
-    }
-    if let Some(slug) = pos("project") {
-        let slug = slug.trim();
-        let (slug_name, slug_id) = slug.rsplit_once('-').unwrap_or(("", slug));
-        let slug_name = slug_name.trim();
-        let slug_id = slug_id.trim();
-        if slug_name.is_empty()
-            || slug_id.is_empty()
-            || !slug_id.chars().all(|c| c.is_ascii_alphanumeric())
-        {
-            anyhow::bail!("'{raw}' has no project slug id after /project/<slug>-<slug-id>/");
-        }
-        scope.project_slug = Some(slug_name.to_string());
-        scope.project_slug_id = Some(slug_id.to_string());
-    }
-    if let Some(label) = pos("label") {
-        let label = label.trim();
-        if !label.is_empty() {
-            scope.label = Some(label.to_string());
-        }
-    }
-    if scope.team.is_none() && scope.project_slug_id.is_none() {
-        anyhow::bail!("'{raw}' has no team, project, or issue scope — open the team or project in Linear and copy that link");
-    }
-    Ok(scope)
-}
-
 const PROJECT_ISSUES_QUERY: &str = r#"query($projectSlugId: String!, $after: String) {
   issues(filter: { project: { slugId: { eq: $projectSlugId } } }, first: 50, after: $after, orderBy: updatedAt) {
     nodes {
@@ -297,7 +231,7 @@ fn scope_of(source: &crate::models::TaskSource) -> Result<Scope, PollError> {
     let project_slug_id = opt("projectSlugId");
     if team.is_none() && project_slug_id.is_none() {
         return Err(PollError::Fatal(format!(
-            "source #{}: missing team or project scope — recreate it with -s team=ENG or --url <linear-link>",
+            "source #{}: missing team or project scope — recreate it with -s team=ENG",
             source.id
         )));
     }
@@ -493,6 +427,220 @@ pub async fn ping() -> Result<()> {
         anyhow::bail!("Linear connection check failed: unexpected empty viewer id");
     }
     Ok(())
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct TeamInfo {
+    pub key: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ProjectInfo {
+    pub name: String,
+    pub slug_id: String,
+    pub teams: Vec<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct LabelInfo {
+    pub name: String,
+    pub team: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TeamsData {
+    teams: TeamsConnection,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TeamsConnection {
+    #[serde(default)]
+    nodes: Vec<TeamEntry>,
+    #[serde(default)]
+    page_info: PageInfo,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct TeamEntry {
+    #[serde(default)]
+    key: String,
+    #[serde(default)]
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ProjectsListData {
+    projects: ProjectsListConnection,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectsListConnection {
+    #[serde(default)]
+    nodes: Vec<ProjectListEntry>,
+    #[serde(default)]
+    page_info: PageInfo,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectListEntry {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    slug_id: String,
+    #[serde(default)]
+    teams: ProjectTeamsConnection,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct ProjectTeamsConnection {
+    #[serde(default)]
+    nodes: Vec<TeamEntry>,
+}
+
+pub async fn list_teams() -> Result<Vec<TeamInfo>> {
+    let key = api_key()?;
+    let http = client().map_err(|e| anyhow::anyhow!("{e}"))?;
+    let mut out = Vec::new();
+    let mut after: Option<String> = None;
+    for _ in 0..MAX_PAGES {
+        let data: TeamsData = graphql(
+            &http,
+            &key,
+            "query($after: String) { teams(first: 50, after: $after) { nodes { key name } pageInfo { hasNextPage endCursor } } }",
+            serde_json::json!({ "after": after }),
+            "team list",
+        )
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+        for entry in data.teams.nodes {
+            if entry.key.trim().is_empty() {
+                continue;
+            }
+            out.push(TeamInfo {
+                key: entry.key,
+                name: entry.name,
+            });
+        }
+        if !data.teams.page_info.has_next_page {
+            break;
+        }
+        after = data.teams.page_info.end_cursor.clone();
+    }
+    out.sort_by(|a, b| a.key.cmp(&b.key));
+    Ok(out)
+}
+
+pub async fn list_projects() -> Result<Vec<ProjectInfo>> {
+    let key = api_key()?;
+    let http = client().map_err(|e| anyhow::anyhow!("{e}"))?;
+    let mut out = Vec::new();
+    let mut after: Option<String> = None;
+    for _ in 0..MAX_PAGES {
+        let data: ProjectsListData = graphql(
+            &http,
+            &key,
+            "query($after: String) { projects(first: 50, after: $after) { nodes { name slugId teams(first: 10) { nodes { key } } } pageInfo { hasNextPage endCursor } } }",
+            serde_json::json!({ "after": after }),
+            "project list",
+        )
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+        for entry in data.projects.nodes {
+            if entry.name.trim().is_empty() || entry.slug_id.trim().is_empty() {
+                continue;
+            }
+            out.push(ProjectInfo {
+                name: entry.name,
+                slug_id: entry.slug_id,
+                teams: entry
+                    .teams
+                    .nodes
+                    .into_iter()
+                    .map(|t| t.key)
+                    .filter(|k| !k.trim().is_empty())
+                    .collect(),
+            });
+        }
+        if !data.projects.page_info.has_next_page {
+            break;
+        }
+        after = data.projects.page_info.end_cursor.clone();
+    }
+    out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    Ok(out)
+}
+
+#[derive(Debug, Deserialize)]
+struct IssueLabelsData {
+    #[serde(rename = "issueLabels")]
+    issue_labels: IssueLabelsConnection,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct IssueLabelsConnection {
+    #[serde(default)]
+    nodes: Vec<IssueLabelEntry>,
+    #[serde(default)]
+    page_info: PageInfo,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct IssueLabelEntry {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    team: Option<IssueLabelTeam>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct IssueLabelTeam {
+    #[serde(default)]
+    key: String,
+}
+
+pub async fn list_labels() -> Result<Vec<LabelInfo>> {
+    let key = api_key()?;
+    let http = client().map_err(|e| anyhow::anyhow!("{e}"))?;
+    let mut out = Vec::new();
+    let mut after: Option<String> = None;
+    for _ in 0..MAX_PAGES {
+        let data: IssueLabelsData = graphql(
+            &http,
+            &key,
+            "query($after: String) { issueLabels(first: 50, after: $after) { nodes { name team { key } } pageInfo { hasNextPage endCursor } } }",
+            serde_json::json!({ "after": after }),
+            "label list",
+        )
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+        for entry in data.issue_labels.nodes {
+            if entry.name.trim().is_empty() {
+                continue;
+            }
+            let team = entry.team.and_then(|t| {
+                if t.key.trim().is_empty() {
+                    None
+                } else {
+                    Some(t.key)
+                }
+            });
+            out.push(LabelInfo {
+                name: entry.name,
+                team,
+            });
+        }
+        if !data.issue_labels.page_info.has_next_page {
+            break;
+        }
+        after = data.issue_labels.page_info.end_cursor.clone();
+    }
+    out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    Ok(out)
 }
 
 pub async fn poll_source(source: &crate::models::TaskSource) -> Result<PollStats, PollError> {
