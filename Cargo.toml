@@ -8,10 +8,6 @@ build = "core/build.rs"
 name = "formless-hands"
 path = "core/src/main.rs"
 
-[[bin]]
-name = "fh"
-path = "core/src/main.rs"
-
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 clap = { version = "4", features = ["derive"] }
