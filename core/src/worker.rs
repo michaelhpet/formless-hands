@@ -179,8 +179,7 @@ pub async fn work_once(cfg: &Config) -> Result<WorkOutcome> {
 
     let prompt_path = state_file("prompts", task.id, attempt, "md")?;
     let prompt = format!(
-        "# Task {}\n\nImplement this task.\n\n## Title\n\n{}\n\n## Body\n\n{}\n\n## Instructions\n\n{}\n\n## Working agreement\n\n- Make one atomic commit per logical change as you go, using conventional commits (feat/fix/docs/chore/refactor/test). Leave nothing uncommitted when you finish.\n- If you cannot proceed, explain why and exit non-zero.\n",
-        task.external_id.as_deref().unwrap_or("native"),
+        "Implement this task\n\n{}\n\n{}\n\n## Instructions\n\n{}\n\n## Working agreement\n\n- Make one atomic commit per logical change as you go, using conventional commits (feat/fix/docs/chore/refactor/test). Leave nothing uncommitted when you finish.\n- If you cannot proceed, explain why and exit non-zero.\n",
         task.title,
         if task.body.trim().is_empty() { "(none)" } else { &task.body },
         if task.instructions.trim().is_empty() { "(none)" } else { &task.instructions },
@@ -410,7 +409,7 @@ pub(crate) async fn run_agent(
     extra_args: &[&str],
     timeout_secs: u64,
 ) -> Result<AgentOutcome, String> {
-    let mut args = vec!["run"];
+    let mut args = vec!["run", "--dir", worktree];
     args.extend(extra_args);
     args.extend(["--format", "json"]);
     args.push(message);
