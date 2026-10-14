@@ -53,6 +53,7 @@ pub fn router() -> Router {
         .route("/api/tasks/{id}/dependencies/{dep}", delete(api_dependency_delete))
         .route("/api/works", get(api_works))
         .route("/api/works/{id}", get(api_work))
+        .route("/api/works/{id}/log", get(api_work_log))
         .route("/api/events", get(api_events))
         .route("/api/config", get(api_config).put(api_config_save))
         .route("/", get(index))
@@ -429,6 +430,62 @@ async fn api_work(Path(id): Path<i64>) -> Result<Json<models::Work>, StatusCode>
         Some(w) => Ok(Json(w)),
         None => Err(StatusCode::NOT_FOUND),
     }
+}
+
+const LOG_TAIL_BYTES: u64 = 100_000;
+const LOG_TAIL_LINES: usize = 2000;
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ApiWorkLog {
+    work_id: i64,
+    log_path: String,
+    truncated: bool,
+    lines: Vec<String>,
+}
+
+fn tail_lines(path: &str) -> (Vec<String>, bool) {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = match std::fs::File::open(path) {
+        Ok(f) => f,
+        Err(_) => return (Vec::new(), false),
+    };
+    let size = file.metadata().map(|m| m.len()).unwrap_or(0);
+    let truncated = size > LOG_TAIL_BYTES;
+    if truncated {
+        let _ = file.seek(SeekFrom::Start(size - LOG_TAIL_BYTES));
+    }
+    let mut text = String::new();
+    if file.read_to_string(&mut text).is_err() {
+        return (Vec::new(), truncated);
+    }
+    let start = if truncated {
+        text.find('\n').map(|i| i + 1).unwrap_or(0)
+    } else {
+        0
+    };
+    let mut lines: Vec<String> = text[start..].lines().map(str::to_string).collect();
+    let over = lines.len() > LOG_TAIL_LINES;
+    if over {
+        lines = lines[lines.len() - LOG_TAIL_LINES..].to_vec();
+    }
+    (lines, truncated || over)
+}
+
+async fn api_work_log(Path(id): Path<i64>) -> Result<Json<ApiWorkLog>, StatusCode> {
+    let work = {
+        let conn = db::connect().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        db::get_work(&conn, id)
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            .ok_or(StatusCode::NOT_FOUND)?
+    };
+    let (lines, truncated) = tail_lines(&work.log_path);
+    Ok(Json(ApiWorkLog {
+        work_id: id,
+        log_path: work.log_path,
+        truncated,
+        lines,
+    }))
 }
 
 async fn api_events() -> Sse<impl tokio_stream::Stream<Item = Result<SseEvent, Infallible>>> {

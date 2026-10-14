@@ -62,3 +62,28 @@ export function useWork(id: string | undefined) {
 		enabled: id !== undefined,
 	});
 }
+
+export interface WorkLog {
+	workId: number;
+	logPath: string;
+	truncated: boolean;
+	lines: string[];
+}
+
+function getWorkLog(id: number): Promise<WorkLog> {
+	return request<WorkLog>(`/api/works/${id}/log`);
+}
+
+export function useWorkLog(id: string | undefined, live: boolean) {
+	return useQuery({
+		queryKey: [WORKS_QUERY_KEY, id ?? null, "log"],
+		queryFn: async (): Promise<WorkLog | undefined> => {
+			if (id === undefined || !/^\d+$/.test(id)) {
+				return undefined;
+			}
+			return getWorkLog(Number(id));
+		},
+		enabled: id !== undefined,
+		refetchInterval: live ? 5000 : false,
+	});
+}

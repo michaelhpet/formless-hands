@@ -17,7 +17,7 @@ import {
 import type { Task } from "@/lib/api/tasks";
 import { useTasks } from "@/lib/api/tasks";
 import type { Work } from "@/lib/api/works";
-import { useWork, useWorks } from "@/lib/api/works";
+import { useWork, useWorkLog, useWorks } from "@/lib/api/works";
 import { formatStamp } from "@/lib/datetime";
 import { PriorityLabel, TaskStatusMark } from "../../tasks/task-utils";
 import { sourceLabelOf } from "../../tasks/tasks-data";
@@ -28,11 +28,15 @@ import {
 	workStatusOf,
 	workTaskRef,
 } from "../works-data";
-import {
-	genericTranscript,
-	type TranscriptLine,
-	type TranscriptTone,
-} from "./work-detail-data";
+
+type TranscriptTone = "plain" | "accent" | "danger" | "success";
+
+interface TranscriptLine {
+	position: number;
+	time: string;
+	text: string;
+	tone: TranscriptTone;
+}
 
 const TONE_CLASS: Record<TranscriptTone, string> = {
 	plain: "text-foreground",
@@ -71,7 +75,7 @@ function TranscriptCard({
 			<div className="flex flex-col gap-1.5 p-3.5">
 				{lines.map((line) => (
 					<p
-						key={`${line.time}-${line.text.slice(0, 32)}`}
+						key={line.position}
 						className={cn("text-[12px] leading-4.75", TONE_CLASS[line.tone])}
 					>
 						{line.time} {line.text}
@@ -162,6 +166,7 @@ function WorkDetailView({
 	const [live, setLive] = useState(work.finished_at === null);
 	const [cancelled, setCancelled] = useState(false);
 	const [retried, setRetried] = useState(false);
+	const logQuery = useWorkLog(String(work.id), live && !cancelled);
 
 	const status: WorkStatus = cancelled
 		? "failed"
@@ -174,11 +179,18 @@ function WorkDetailView({
 		allWorks.filter(
 			(item) => item.task_id === work.task_id && item.id <= work.id,
 		).length || 1;
-	const transcript = [
-		...genericTranscript(work),
+	const logLines = logQuery.data?.lines ?? [];
+	const transcript: TranscriptLine[] = [
+		...logLines.map((text, position) => ({
+			position,
+			time: "",
+			text,
+			tone: "plain" as const,
+		})),
 		...(retried
 			? [
 					{
+						position: logLines.length,
 						time: "now",
 						text: `retry queued on ${work.branch} · attempt ${attempt + 1}`,
 						tone: "accent" as const,
@@ -253,6 +265,19 @@ function WorkDetailView({
 						live={live}
 						exitCode={exitCode}
 					/>
+					{logQuery.isLoading ? (
+						<p className="text-muted-foreground">Loading transcript…</p>
+					) : null}
+					{!logQuery.isLoading && transcript.length === 0 ? (
+						<p className="text-muted-foreground">
+							No transcript yet — the agent may not have started writing.
+						</p>
+					) : null}
+					{logQuery.data?.truncated ? (
+						<p className="text-muted-foreground">
+							Showing tail — full log at {work.log_path}
+						</p>
+					) : null}
 				</div>
 				<div className="flex w-85 shrink-0 flex-col gap-3 max-xl:w-full">
 					<Card>
