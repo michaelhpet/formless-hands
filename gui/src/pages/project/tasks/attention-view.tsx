@@ -1,10 +1,13 @@
 import { IconCheck } from "@tabler/icons-react";
+import type { Task } from "@/lib/api/tasks";
 import { TaskListRow } from "./task-list-row";
-import { ATTENTION_STATUSES, sortTasks, type Task } from "./tasks-data";
+import { ATTENTION_STATUSES, sortTasks } from "./tasks-data";
 
 export function AttentionView({ tasks }: { tasks: Task[] }) {
 	const items = sortTasks(
-		tasks.filter((task) => ATTENTION_STATUSES.includes(task.status)),
+		tasks.filter((task) =>
+			(ATTENTION_STATUSES as string[]).includes(task.status),
+		),
 	);
 
 	if (items.length === 0) {

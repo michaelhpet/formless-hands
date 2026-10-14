@@ -18,7 +18,6 @@ import {
 	FieldGroup,
 	FieldLabel,
 } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import {
 	Select,
 	SelectContent,
@@ -27,42 +26,41 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { fieldErrors } from "@/lib/form";
-import { PRIORITY_LABELS, type Task } from "../tasks-data";
+import { PRIORITY_OPTIONS } from "../tasks-data";
 
 export interface EditTaskInput {
-	title: string;
-	priority: Task["priority"];
+	priority: number;
 }
 
-const prioritySchema = z.enum(["0", "1", "2", "3"]);
+const prioritySchema = z.enum(["0", "1", "2", "3", "4"]);
 
 const editTaskSchema = z.object({
-	title: z
-		.string()
-		.check(
-			z.refine((value: string) => value.trim() !== "", "Title is required"),
-		),
 	priority: prioritySchema,
 });
 
+function clampPriority(priority: number): string {
+	if (priority >= 4) {
+		return "4";
+	}
+	if (priority <= 0) {
+		return "0";
+	}
+	return String(Math.round(priority));
+}
+
 export function EditTaskDialog({
-	title,
 	priority,
 	onSave,
 }: {
-	title: string;
-	priority: Task["priority"];
+	priority: number;
 	onSave: (input: EditTaskInput) => void;
 }) {
 	const [open, setOpen] = useState(false);
 	const form = useForm({
-		defaultValues: { title, priority: String(priority) },
+		defaultValues: { priority: clampPriority(priority) },
 		validators: { onSubmit: editTaskSchema },
 		onSubmit: ({ value }) => {
-			onSave({
-				title: value.title.trim(),
-				priority: Number(value.priority) as Task["priority"],
-			});
+			onSave({ priority: Number(value.priority) });
 			setOpen(false);
 		},
 	});
@@ -73,7 +71,7 @@ export function EditTaskDialog({
 			<DialogContent>
 				<DialogHeader>
 					<DialogTitle>Edit Task</DialogTitle>
-					<DialogDescription>Update the title or priority.</DialogDescription>
+					<DialogDescription>Update the priority.</DialogDescription>
 				</DialogHeader>
 				<form
 					className="flex flex-col gap-4"
@@ -83,21 +81,6 @@ export function EditTaskDialog({
 					}}
 				>
 					<FieldGroup>
-						<form.Field name="title">
-							{(field) => (
-								<Field>
-									<FieldLabel htmlFor="edit-task-title">Title</FieldLabel>
-									<Input
-										id="edit-task-title"
-										value={field.state.value}
-										onBlur={field.handleBlur}
-										onChange={(event) => field.handleChange(event.target.value)}
-										autoComplete="off"
-									/>
-									<FieldError errors={fieldErrors(field.state.meta.errors)} />
-								</Field>
-							)}
-						</form.Field>
 						<form.Field name="priority">
 							{(field) => (
 								<Field>
@@ -109,19 +92,25 @@ export function EditTaskDialog({
 												field.handleChange(value);
 											}
 										}}
-										items={PRIORITY_LABELS}
+										items={Object.fromEntries(
+											PRIORITY_OPTIONS.map((option) => [
+												option.value,
+												option.label,
+											]),
+										)}
 									>
 										<SelectTrigger id="edit-task-priority" className="w-full">
 											<SelectValue />
 										</SelectTrigger>
 										<SelectContent>
-											{Object.entries(PRIORITY_LABELS).map(([value, label]) => (
-												<SelectItem key={value} value={value}>
-													{label}
+											{PRIORITY_OPTIONS.map((option) => (
+												<SelectItem key={option.value} value={option.value}>
+													{option.label}
 												</SelectItem>
 											))}
 										</SelectContent>
 									</Select>
+									<FieldError errors={fieldErrors(field.state.meta.errors)} />
 								</Field>
 							)}
 						</form.Field>

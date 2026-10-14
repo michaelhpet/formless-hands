@@ -29,13 +29,17 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
+import type { Work } from "@/lib/api/works";
 import {
 	ariaSort,
 	DEFAULT_SORT,
 	sortDirection,
 	toggleSort,
-	type Work,
 	type WorkSortKey,
+	workDurationText,
+	workStartedText,
+	workStatusOf,
+	workTaskRef,
 } from "./works-data";
 
 const PAGE_SIZE = 10;
@@ -67,12 +71,12 @@ function WorkRowMenu({ work }: { work: Work }) {
 						<IconCopy data-icon="inline-start" />
 						Copy branch
 					</DropdownMenuItem>
-					<DropdownMenuItem onClick={() => void copy(work.worktree)}>
+					<DropdownMenuItem onClick={() => void copy(work.worktree_path)}>
 						<IconCopy data-icon="inline-start" />
 						Copy worktree path
 					</DropdownMenuItem>
-					{work.exitCode !== null ? (
-						<DropdownMenuItem onClick={() => void copy(String(work.exitCode))}>
+					{work.exit_code !== null ? (
+						<DropdownMenuItem onClick={() => void copy(String(work.exit_code))}>
 							<IconCopy data-icon="inline-start" />
 							Copy exit code
 						</DropdownMenuItem>
@@ -109,18 +113,18 @@ function WorkTableRow({ work }: { work: Work }) {
 			</TableCell>
 			<TableCell>
 				<span className="text-[13px] text-foreground">
-					{work.taskRef}: {work.taskTitle}
+					{workTaskRef(work)}: {work.task_title}
 				</span>
 			</TableCell>
 			<TableCell className="w-80 text-foreground">{work.branch}</TableCell>
 			<TableCell className="w-36 text-muted-foreground">
-				{work.started} · {work.duration}
+				{workStartedText(work)} · {workDurationText(work)}
 			</TableCell>
 			<TableCell className="w-24 text-foreground">
-				{work.exitCode === null ? "None" : work.exitCode}
+				{work.exit_code === null ? "None" : work.exit_code}
 			</TableCell>
 			<TableCell className="w-30">
-				<StatusBadge status={work.status} />
+				<StatusBadge status={workStatusOf(work)} />
 			</TableCell>
 			<TableCell
 				className="w-14 text-center"

@@ -309,6 +309,13 @@ async fn api_task_create(
     if body.title.trim().is_empty() {
         return Err((StatusCode::BAD_REQUEST, "title must not be empty".to_string()));
     }
+    let priority = body.priority.unwrap_or(2);
+    if !(0..=4).contains(&priority) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("bad priority {priority} — expected 0 (urgent) to 4 (none)"),
+        ));
+    }
     let conn = db::connect().map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
     let project_id = db::get_project_by_name(&conn, &body.project)
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?
@@ -323,7 +330,7 @@ async fn api_task_create(
             url: "",
             title: body.title.trim(),
             body: body.body.as_deref().unwrap_or(""),
-            priority: body.priority.unwrap_or(0),
+            priority,
         },
     )
     .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
@@ -359,6 +366,14 @@ async fn api_task_update(
     }
     if body.status.is_none() && body.priority.is_none() && body.instructions.is_none() {
         return Err((StatusCode::BAD_REQUEST, "nothing to update".to_string()));
+    }
+    if let Some(p) = body.priority {
+        if !(0..=4).contains(&p) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!("bad priority {p} — expected 0 (urgent) to 4 (none)"),
+            ));
+        }
     }
     let conn = db::connect().map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
     if !db::update_task(&conn, id, body.status.as_deref(), body.priority, body.instructions.as_deref())

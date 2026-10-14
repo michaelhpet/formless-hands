@@ -36,17 +36,18 @@ import { AttentionView } from "./attention-view";
 import { NewTaskDialog, type NewTaskInput } from "./new-task-dialog";
 import { TaskKanban } from "./task-kanban";
 import {
-	mapApiTask,
 	SOURCE_LABELS,
 	STATUS_FILTERS,
 	STATUS_LABELS,
 	sortTasks,
+	sourceKindOf,
 	summarizeTasks,
 	TASK_VIEWS,
 	type TaskSourceKind,
 	type TaskStatus,
 	type TaskView,
 	taskDisplayId,
+	taskRef,
 	VIEW_LABELS,
 } from "./tasks-data";
 import { TasksTableView } from "./tasks-table-view";
@@ -96,7 +97,7 @@ export function TasksPage() {
 		status: status === "all" ? undefined : status,
 		limit: 200,
 	});
-	const tasks = (tasksQuery.data ?? []).map(mapApiTask);
+	const tasks = tasksQuery.data ?? [];
 
 	const updateSearch = (patch: Partial<TasksSearch>) => {
 		navigate({
@@ -128,7 +129,7 @@ export function TasksPage() {
 
 	const visible = sortTasks(
 		tasks.filter((task) => {
-			if (source !== "all" && task.source !== source) {
+			if (source !== "all" && sourceKindOf(task) !== source) {
 				return false;
 			}
 			if (status !== "all" && task.status !== status) {
@@ -138,7 +139,7 @@ export function TasksPage() {
 			if (!q) {
 				return true;
 			}
-			return [taskDisplayId(task), task.title, task.ref].some((field) =>
+			return [taskDisplayId(task), task.title, taskRef(task)].some((field) =>
 				field.toLowerCase().includes(q),
 			);
 		}),

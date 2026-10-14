@@ -84,6 +84,8 @@ pub struct Task {
     pub decision_at: String,
     pub decision_note: String,
     pub decision_hash: String,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(Debug)]

@@ -1,5 +1,6 @@
+import type { Task } from "@/lib/api/tasks";
 import { TaskListRow } from "./task-list-row";
-import { groupTasksByAge, type Task } from "./tasks-data";
+import { groupTasksByAge } from "./tasks-data";
 
 export function TimelineView({ tasks }: { tasks: Task[] }) {
 	const groups = groupTasksByAge(tasks);

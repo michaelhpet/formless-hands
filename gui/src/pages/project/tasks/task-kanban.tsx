@@ -2,14 +2,15 @@ import { useNavigate, useParams } from "@tanstack/react-router";
 import { cn } from "cn";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import type { Task } from "@/lib/api/tasks";
 import { accentBorderClass, PriorityLabel } from "./task-utils";
 import {
 	columnForStatus,
 	KANBAN_COLUMNS,
 	type KanbanColumnKey,
-	SOURCE_LABELS,
-	type Task,
+	sourceLabelOf,
 	taskDisplayId,
+	taskMeta,
 } from "./tasks-data";
 
 const COUNT_STYLES: Record<KanbanColumnKey, string | undefined> = {
@@ -27,7 +28,7 @@ function TaskCard({ task }: { task: Task }) {
 	const openDetail = () => {
 		navigate({
 			to: "/$projectId/tasks/$taskId",
-			params: { projectId: projectId ?? "", taskId: task.id },
+			params: { projectId: projectId ?? "", taskId: String(task.id) },
 		});
 	};
 	return (
@@ -52,7 +53,7 @@ function TaskCard({ task }: { task: Task }) {
 			<CardContent className="flex flex-col gap-1.5">
 				<div className="flex items-center justify-between">
 					<span className="text-muted-foreground">
-						{taskDisplayId(task)} · {SOURCE_LABELS[task.source]}
+						{taskDisplayId(task)} · {sourceLabelOf(task)}
 					</span>
 					<PriorityLabel priority={task.priority} />
 				</div>
@@ -73,7 +74,7 @@ function TaskCard({ task }: { task: Task }) {
 								: "text-muted-foreground",
 					)}
 				>
-					{task.meta}
+					{taskMeta(task)}
 				</span>
 			</CardContent>
 		</Card>

@@ -1,4 +1,5 @@
-import type { Task as TaskRecord } from "@/lib/api/tasks";
+import type { Task } from "@/lib/api/tasks";
+import { formatStamp, parseUtcStamp } from "@/lib/datetime";
 
 export type TaskStatus =
 	| "open"
@@ -12,23 +13,6 @@ export type TaskStatus =
 	| "needs-context";
 
 export type TaskSourceKind = "linear" | "github" | "fh";
-
-export interface Task {
-	id: string;
-	externalId: string | null;
-	source: TaskSourceKind;
-	title: string;
-	body: string;
-	labels: string[];
-	status: TaskStatus;
-	priority: 0 | 1 | 2 | 3;
-	meta: string;
-	ref: string;
-	branch: string;
-	attempts: number;
-	lastError: string;
-	age: string;
-}
 
 export type TaskView = "kanban" | "table" | "attention" | "timeline";
 
@@ -112,276 +96,63 @@ export const STATUS_LABELS: Record<"all" | TaskStatus, string> = {
 	closed: "Closed",
 };
 
-export const PRIORITY_LABELS: Record<string, string> = {
-	"0": "P0: Urgent",
-	"1": "P1: High",
-	"2": "P2: Normal",
-	"3": "P3: Low",
-};
-
-export const INITIAL_TASKS: Task[] = [
-	{
-		id: "LIN-144",
-		externalId: "LIN-144",
-		source: "linear",
-		title: "Migrate daemon state file",
-		body: "",
-		labels: [],
-		branch: "None",
-		attempts: 0,
-		lastError: "",
-		status: "blocked",
-		priority: 0,
-		meta: "Blocked · waiting 4d",
-		ref: "None",
-		age: "4d",
-	},
-	{
-		id: "LIN-150",
-		externalId: "LIN-150",
-		source: "linear",
-		title: "Add retry with backoff to source poller",
-		body: "",
-		labels: [],
-		branch: "None",
-		attempts: 0,
-		lastError: "",
-		status: "open",
-		priority: 1,
-		meta: "Open · 6d old",
-		ref: "None",
-		age: "6d",
-	},
-	{
-		id: "LIN-149",
-		externalId: "LIN-149",
-		source: "linear",
-		title: "Wire task priority into queue order",
-		body: "",
-		labels: [],
-		branch: "None",
-		attempts: 0,
-		lastError: "",
-		status: "triaged",
-		priority: 1,
-		meta: "Triaged · instructions set",
-		ref: "None",
-		age: "3d",
-	},
-	{
-		id: "LIN-142",
-		externalId: "LIN-142",
-		source: "linear",
-		title: "Fix auth refresh loop",
-		body: "",
-		labels: [],
-		branch: "None",
-		attempts: 0,
-		lastError: "",
-		status: "in-progress",
-		priority: 1,
-		meta: "wt-auth-fix · try 2 · 12m",
-		ref: "wt-auth-fix · try 2",
-		age: "12m",
-	},
-	{
-		id: "GH-881",
-		externalId: "GH-881",
-		source: "github",
-		title: "Implement task table for GUI",
-		body: "",
-		labels: [],
-		branch: "None",
-		attempts: 0,
-		lastError: "",
-		status: "completed",
-		priority: 1,
-		meta: "wt-gui-table · completed · 28m",
-		ref: "wt-gui-table · try 1",
-		age: "28m",
-	},
-	{
-		id: "LIN-151",
-		externalId: "LIN-151",
-		source: "linear",
-		title: "Triage uncategorized linear imports",
-		body: "",
-		labels: [],
-		branch: "None",
-		attempts: 0,
-		lastError: "",
-		status: "needs-context",
-		priority: 2,
-		meta: "Needs context · no body",
-		ref: "None",
-		age: "1d",
-	},
-	{
-		id: "LIN-139",
-		externalId: "LIN-139",
-		source: "linear",
-		title: "Add backoff to source poller",
-		body: "",
-		labels: [],
-		branch: "None",
-		attempts: 0,
-		lastError: "",
-		status: "in-review",
-		priority: 2,
-		meta: "PR #412 · 2 comments",
-		ref: "PR #412 · 2 comments",
-		age: "4m",
-	},
-	{
-		id: "GH-893",
-		externalId: "GH-893",
-		source: "github",
-		title: "Add empty states for docs tab",
-		body: "",
-		labels: [],
-		branch: "None",
-		attempts: 0,
-		lastError: "",
-		status: "triaged",
-		priority: 2,
-		meta: "Triaged · 1d old",
-		ref: "None",
-		age: "1d",
-	},
-	{
-		id: "LIN-138",
-		externalId: "LIN-138",
-		source: "linear",
-		title: "Cache poller cursor per source",
-		body: "",
-		labels: [],
-		branch: "None",
-		attempts: 0,
-		lastError: "",
-		status: "merged",
-		priority: 2,
-		meta: "merged · PR #408",
-		ref: "PR #408",
-		age: "2d",
-	},
-	{
-		id: "GH-895",
-		externalId: "GH-895",
-		source: "github",
-		title: "Document source config schema",
-		body: "",
-		labels: [],
-		branch: "None",
-		attempts: 0,
-		lastError: "",
-		status: "open",
-		priority: 3,
-		meta: "Open · 2d old",
-		ref: "None",
-		age: "2d",
-	},
-	{
-		id: "GH-870",
-		externalId: "GH-870",
-		source: "github",
-		title: "Update CLI help text",
-		body: "",
-		labels: [],
-		branch: "None",
-		attempts: 0,
-		lastError: "",
-		status: "in-review",
-		priority: 3,
-		meta: "PR #87 · 1 comment",
-		ref: "PR #87 · 1 comment",
-		age: "9m",
-	},
-	{
-		id: "GH-865",
-		externalId: "GH-865",
-		source: "github",
-		title: "Fix watcher debounce interval",
-		body: "",
-		labels: [],
-		branch: "None",
-		attempts: 0,
-		lastError: "",
-		status: "closed",
-		priority: 3,
-		meta: "Closed · no PR",
-		ref: "None",
-		age: "5d",
-	},
+export const PRIORITY_OPTIONS: { value: string; label: string }[] = [
+	{ value: "0", label: "P0: Urgent" },
+	{ value: "1", label: "P1: High" },
+	{ value: "2", label: "P2: Normal" },
+	{ value: "3", label: "P3: Low" },
+	{ value: "4", label: "No priority" },
 ];
 
-const API_STATUSES: TaskStatus[] = [
-	"open",
-	"triaged",
-	"in-progress",
-	"completed",
-	"in-review",
-	"blocked",
-	"needs-context",
-	"merged",
-	"closed",
-];
+export function statusLabel(status: string): string {
+	return (STATUS_LABELS as Record<string, string>)[status] ?? status;
+}
 
-export function mapApiTask(task: TaskRecord): Task {
-	const status: TaskStatus = API_STATUSES.includes(task.status as TaskStatus)
-		? (task.status as TaskStatus)
-		: "open";
-	const source: TaskSourceKind =
-		task.source_kind === "github"
-			? "github"
-			: task.source_kind === "linear"
-				? "linear"
-				: "fh";
-	const priority =
-		task.priority >= 4
-			? 0
-			: task.priority <= 0
-				? 3
-				: ((4 - task.priority) as 0 | 1 | 2 | 3);
-	const ref =
-		task.pr_number !== null
-			? `PR #${task.pr_number}`
-			: (task.external_id ?? "None");
-	let labels: string[] = [];
+export function parseLabels(labels: string): string[] {
 	try {
-		const parsed: unknown = JSON.parse(task.labels ?? "[]");
+		const parsed: unknown = JSON.parse(labels);
 		if (Array.isArray(parsed)) {
-			labels = parsed.filter(
+			return parsed.filter(
 				(label): label is string => typeof label === "string",
 			);
 		}
 	} catch {
-		labels = [];
+		return [];
 	}
-	return {
-		id: String(task.id),
-		externalId: task.external_id,
-		source,
-		title: task.title,
-		body: task.body ?? "",
-		labels,
-		status,
-		priority,
-		meta: `${STATUS_LABELS[status]} · ${ref}`,
-		ref,
-		branch: task.branch ? task.branch : "None",
-		attempts: task.attempts ?? 0,
-		lastError: task.last_error ?? "",
-		age: "",
-	};
+	return [];
 }
 
-export function taskDisplayId(task: Task): string {
-	return task.externalId ?? task.id;
+export function sourceKindOf(task: Pick<Task, "source_kind">): TaskSourceKind {
+	return task.source_kind === "linear"
+		? "linear"
+		: task.source_kind === "github"
+			? "github"
+			: "fh";
 }
 
-export function columnForStatus(status: TaskStatus): KanbanColumnKey {
+export function sourceLabelOf(task: Pick<Task, "source_kind">): string {
+	return SOURCE_LABELS[sourceKindOf(task)];
+}
+
+export function taskDisplayId(task: Pick<Task, "id" | "external_id">): string {
+	return task.external_id ?? `#${task.id}`;
+}
+
+export function taskRef(task: Pick<Task, "pr_number" | "external_id">): string {
+	return task.pr_number !== null
+		? `PR #${task.pr_number}`
+		: (task.external_id ?? "None");
+}
+
+export function taskMeta(
+	task: Pick<Task, "status" | "pr_number" | "external_id">,
+): string {
+	return `${statusLabel(task.status)} · ${taskRef(task)}`;
+}
+
+export function columnForStatus(status: string): KanbanColumnKey {
 	for (const column of KANBAN_COLUMNS) {
-		if (column.statuses.includes(status)) {
+		if ((column.statuses as string[]).includes(status)) {
 			return column.key;
 		}
 	}
@@ -389,34 +160,33 @@ export function columnForStatus(status: TaskStatus): KanbanColumnKey {
 }
 
 export function sortTasks(tasks: Task[]): Task[] {
-	return [...tasks].sort((a, b) => {
-		if (a.priority !== b.priority) {
-			return a.priority - b.priority;
-		}
-		return a.id.localeCompare(b.id);
-	});
+	return [...tasks].sort((a, b) => a.priority - b.priority || a.id - b.id);
 }
 
-export function ageToMinutes(age: string): number {
-	const text = age.trim().toLowerCase();
-	if (text === "now") {
-		return 0;
-	}
-	const match = text.match(/^(\d+)\s*([mhdw])$/);
-	if (!match) {
+function minutesSince(stamp: string): number {
+	const time = parseUtcStamp(stamp).getTime();
+	if (!Number.isFinite(time)) {
 		return Number.MAX_SAFE_INTEGER;
 	}
-	const amount = Number(match[1]);
-	switch (match[2]) {
-		case "h":
-			return amount * 60;
-		case "d":
-			return amount * 1440;
-		case "w":
-			return amount * 10080;
-		default:
-			return amount;
+	return Math.max(0, Math.round((Date.now() - time) / 60000));
+}
+
+export function ageText(stamp: string): string {
+	const minutes = minutesSince(stamp);
+	if (!Number.isFinite(minutes) || minutes === Number.MAX_SAFE_INTEGER) {
+		return "unknown";
 	}
+	if (minutes < 1) {
+		return "just now";
+	}
+	if (minutes < 60) {
+		return `${minutes}m`;
+	}
+	const hours = Math.round(minutes / 60);
+	if (hours < 48) {
+		return `${hours}h`;
+	}
+	return formatStamp(stamp);
 }
 
 export interface AgeGroup {
@@ -434,7 +204,7 @@ export function groupTasksByAge(tasks: Task[]): AgeGroup[] {
 	];
 	const limits = [60, 1440, 10080, Number.POSITIVE_INFINITY];
 	for (const task of sortTasks(tasks)) {
-		const minutes = ageToMinutes(task.age);
+		const minutes = minutesSince(task.created_at);
 		const index = limits.findIndex((limit) => minutes < limit);
 		groups[index === -1 ? groups.length - 1 : index].tasks.push(task);
 	}
@@ -452,7 +222,7 @@ export interface TaskStats {
 }
 
 export function summarizeTasks(tasks: Task[]): TaskStats {
-	const count = (statuses: TaskStatus[]) =>
+	const count = (statuses: string[]) =>
 		tasks.filter((task) => statuses.includes(task.status)).length;
 	const open = tasks.filter(
 		(task) => task.status !== "merged" && task.status !== "closed",

@@ -1,58 +1,48 @@
 import { AppLayout } from "@/components/app-layout";
-import type { Project as SourceProject } from "@/lib/api/projects";
 import { useCreateProject, useProjects } from "@/lib/api/projects";
-import type { Source } from "@/lib/api/sources";
 import { useSources } from "@/lib/api/sources";
-import type { Task as TaskRecord } from "@/lib/api/tasks";
 import { useTasks } from "@/lib/api/tasks";
+import { useWorks } from "@/lib/api/works";
 import type { NewProjectInput } from "./new-project-dialog";
 import { NewProjectDialog } from "./new-project-dialog";
-import type { Project } from "./projects-table";
-import { mapApiProject, ProjectTable } from "./projects-table";
+import { ProjectTable } from "./projects-table";
 import { StatCards } from "./stats-cards";
 
-function projectSources(
-	sources: Source[] | undefined,
-	projectId: number,
-): { name: string; on: boolean }[] {
-	return (sources ?? [])
-		.filter((source) => source.project_id === projectId)
-		.map((source) => ({ name: source.kind, on: source.enabled }));
-}
-
-function taskCounts(tasks: TaskRecord[] | undefined, projectId: number) {
-	const rows = (tasks ?? []).filter((task) => task.project_id === projectId);
-	return {
-		running: rows.filter((task) => task.status === "in-progress").length,
-		failed: rows.filter((task) => task.status === "blocked").length,
-	};
+function countBy<T>(rows: T[], key: (row: T) => number): Map<number, number> {
+	const counts = new Map<number, number>();
+	for (const row of rows) {
+		const id = key(row);
+		counts.set(id, (counts.get(id) ?? 0) + 1);
+	}
+	return counts;
 }
 
 export function HomePage() {
 	const projectsQuery = useProjects();
 	const sourcesQuery = useSources();
 	const tasksQuery = useTasks({ limit: 500 });
+	const worksQuery = useWorks({ limit: 500 });
 	const createMutation = useCreateProject();
 
-	const projects: Project[] = (projectsQuery.data ?? []).map(
-		(project: SourceProject) => {
-			const counts = taskCounts(tasksQuery.data, project.id);
-			return mapApiProject(
-				project,
-				projectSources(sourcesQuery.data, project.id),
-				counts.running,
-				counts.failed,
-			);
-		},
-	);
+	const projects = projectsQuery.data ?? [];
+	const tasks = tasksQuery.data ?? [];
 
 	const connected = projects.filter(
 		(project) => project.status === "connected",
 	).length;
 
 	const errors = projects.filter(
-		(project) => project.status === "error",
+		(project) => project.status !== "connected",
 	).length;
+
+	const runningByProject = countBy(
+		tasks.filter((task) => task.status === "in-progress"),
+		(task) => task.project_id,
+	);
+	const failedByProject = countBy(
+		tasks.filter((task) => task.status === "blocked"),
+		(task) => task.project_id,
+	);
 
 	const createProject = (input: NewProjectInput) => {
 		createMutation.mutate({ repo: input.repo });
@@ -60,10 +50,16 @@ export function HomePage() {
 
 	const loading = projectsQuery.isLoading;
 	const loadError =
-		projectsQuery.isError || sourcesQuery.isError || tasksQuery.isError
-			? [projectsQuery.error, sourcesQuery.error, tasksQuery.error].find(
-					(error) => error instanceof Error,
-				)
+		projectsQuery.isError ||
+		sourcesQuery.isError ||
+		tasksQuery.isError ||
+		worksQuery.isError
+			? [
+					projectsQuery.error,
+					sourcesQuery.error,
+					tasksQuery.error,
+					worksQuery.error,
+				].find((error) => error instanceof Error)
 			: undefined;
 
 	return (
@@ -78,7 +74,13 @@ export function HomePage() {
 					</div>
 					<NewProjectDialog onCreate={createProject} />
 				</div>
-				<StatCards projectCount={projects.length} />
+				<StatCards
+					tasks={tasks}
+					works={worksQuery.data ?? []}
+					sources={sourcesQuery.data ?? []}
+					projectCount={projects.length}
+					connectedCount={connected}
+				/>
 				{createMutation.isError ? (
 					<p className="text-destructive">
 						Couldn't create project:{" "}
@@ -95,7 +97,14 @@ export function HomePage() {
 						Couldn't load projects: {loadError.message}
 					</p>
 				) : null}
-				{!loading ? <ProjectTable projects={projects} /> : null}
+				{!loading ? (
+					<ProjectTable
+						projects={projects}
+						sources={sourcesQuery.data ?? []}
+						runningByProject={runningByProject}
+						failedByProject={failedByProject}
+					/>
+				) : null}
 			</div>
 		</AppLayout>
 	);

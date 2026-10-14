@@ -1,7 +1,7 @@
 import { IconSearch } from "@tabler/icons-react";
 import { Link, useParams } from "@tanstack/react-router";
 import { cn } from "cn";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -14,16 +14,25 @@ import {
 	EmptyMedia,
 	EmptyTitle,
 } from "@/components/ui/empty";
+import type { Task } from "@/lib/api/tasks";
+import { useTasks } from "@/lib/api/tasks";
+import type { Work } from "@/lib/api/works";
 import { useWork, useWorks } from "@/lib/api/works";
+import { formatStamp } from "@/lib/datetime";
 import { PriorityLabel, TaskStatusMark } from "../../tasks/task-utils";
-import { SOURCE_LABELS } from "../../tasks/tasks-data";
+import { sourceLabelOf } from "../../tasks/tasks-data";
 import {
-	INITIAL_WORKS,
-	mapApiWork,
-	type Work,
 	type WorkStatus,
+	workDurationText,
+	workStartedText,
+	workStatusOf,
+	workTaskRef,
 } from "../works-data";
-import { getWorkDetail, type TranscriptTone } from "./work-detail-data";
+import {
+	genericTranscript,
+	type TranscriptLine,
+	type TranscriptTone,
+} from "./work-detail-data";
 
 const TONE_CLASS: Record<TranscriptTone, string> = {
 	plain: "text-foreground",
@@ -39,7 +48,7 @@ function TranscriptCard({
 	exitCode,
 }: {
 	logFile: string;
-	lines: { time: string; text: string; tone: TranscriptTone }[];
+	lines: TranscriptLine[];
 	live: boolean;
 	exitCode: number | null;
 }) {
@@ -87,14 +96,10 @@ export function WorkDetailPage() {
 	const { projectId, workId } = useParams({ strict: false });
 	const liveWork = useWork(workId);
 	const liveWorks = useWorks({ project: projectId, limit: 500 });
-	const siblings = useMemo(
-		() => (liveWorks.data ?? []).map(mapApiWork),
-		[liveWorks.data],
-	);
-	const work =
-		(liveWork.data ? mapApiWork(liveWork.data) : undefined) ??
-		INITIAL_WORKS.find((item) => item.id === Number(workId));
-	const allWorks = useMemo(() => [...siblings, ...INITIAL_WORKS], [siblings]);
+	const liveTasks = useTasks({ project: projectId, limit: 500 });
+	const work = liveWork.data;
+	const siblings = liveWorks.data ?? [];
+	const tasks = liveTasks.data ?? [];
 
 	if (liveWork.isLoading) {
 		return (
@@ -134,10 +139,11 @@ export function WorkDetailPage() {
 
 	return (
 		<WorkDetailView
-			key={`${work.id}:${allWorks.length}`}
+			key={`${work.id}:${siblings.length}`}
 			projectId={projectId}
 			work={work}
-			allWorks={allWorks}
+			allWorks={siblings}
+			tasks={tasks}
 		/>
 	);
 }
@@ -146,51 +152,55 @@ function WorkDetailView({
 	projectId,
 	work,
 	allWorks,
+	tasks,
 }: {
 	projectId: string | undefined;
 	work: Work;
 	allWorks: Work[];
+	tasks: Task[];
 }) {
-	const [detail, setDetail] = useState(() => getWorkDetail(work, allWorks));
-	const [live, setLive] = useState(work.status === "running");
+	const [live, setLive] = useState(work.finished_at === null);
+	const [cancelled, setCancelled] = useState(false);
+	const [retried, setRetried] = useState(false);
 
-	const status: WorkStatus = live
-		? "running"
-		: detail.exitCode === 0
-			? "success"
-			: "failed";
+	const status: WorkStatus = cancelled
+		? "failed"
+		: live || retried
+			? "running"
+			: workStatusOf(work);
+	const exitCode = cancelled ? 130 : work.exit_code;
+	const task = tasks.find((item) => item.id === work.task_id);
+	const attempt =
+		allWorks.filter(
+			(item) => item.task_id === work.task_id && item.id <= work.id,
+		).length || 1;
+	const transcript = [
+		...genericTranscript(work),
+		...(retried
+			? [
+					{
+						time: "now",
+						text: `retry queued on ${work.branch} · attempt ${attempt + 1}`,
+						tone: "accent" as const,
+					},
+				]
+			: []),
+	];
 
 	const cancel = () => {
-		setDetail((prev) =>
-			prev ? { ...prev, status: "failed", exitCode: 130 } : prev,
-		);
+		setCancelled(true);
 		setLive(false);
 	};
 
 	const retry = () => {
-		setDetail((prev) =>
-			prev
-				? {
-						...prev,
-						status: "running",
-						exitCode: null,
-						transcript: [
-							...prev.transcript,
-							{
-								time: "now",
-								text: `retry queued on ${prev.branch} · attempt ${prev.attempt + 1}`,
-								tone: "accent" as const,
-							},
-						],
-					}
-				: prev,
-		);
+		setCancelled(false);
+		setRetried(true);
 		setLive(true);
 	};
 
 	const copyLogPath = async () => {
 		try {
-			await navigator.clipboard.writeText(detail.logFile);
+			await navigator.clipboard.writeText(work.log_path);
 		} catch {
 			return;
 		}
@@ -211,16 +221,16 @@ function WorkDetailView({
 						>
 							Works
 						</Link>,
-						`#${detail.id}`,
+						`#${work.id}`,
 					]}
 				/>
 				<div className="flex items-start justify-between gap-3 max-lg:flex-col">
 					<div className="flex min-w-0 flex-col gap-1">
 						<h1 className="text-xl leading-6.5 font-bold">
-							#{detail.id} — {detail.taskTitle}
+							#{work.id} — {work.task_title}
 						</h1>
 						<p className="text-muted-foreground">
-							Started {detail.started} · {detail.agent}
+							Started {workStartedText(work)} · Opencode CLI
 						</p>
 					</div>
 					<div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -238,10 +248,10 @@ function WorkDetailView({
 			<div className="flex w-full items-start gap-4 max-xl:flex-col">
 				<div className="min-w-0 flex-1">
 					<TranscriptCard
-						logFile={detail.logFile}
-						lines={detail.transcript}
+						logFile={work.log_path}
+						lines={transcript}
 						live={live}
-						exitCode={detail.exitCode}
+						exitCode={exitCode}
 					/>
 				</div>
 				<div className="flex w-85 shrink-0 flex-col gap-3 max-xl:w-full">
@@ -249,12 +259,12 @@ function WorkDetailView({
 						<CardContent className="flex flex-col gap-2">
 							<div className="flex items-center justify-between">
 								<h2 className="tracking-wide text-muted-foreground">TASK</h2>
-								{detail.task ? (
+								{task ? (
 									<Link
 										to="/$projectId/tasks/$taskId"
 										params={{
 											projectId: projectId ?? "",
-											taskId: detail.task.id,
+											taskId: String(task.id),
 										}}
 										className="text-muted-foreground hover:text-foreground hover:underline hover:underline-offset-4"
 									>
@@ -263,17 +273,17 @@ function WorkDetailView({
 								) : null}
 							</div>
 							<p className="text-muted-foreground">
-								{detail.taskRef}
-								{detail.task ? ` · ${SOURCE_LABELS[detail.task.source]}` : ""}
+								{workTaskRef(work)}
+								{task ? ` · ${sourceLabelOf(task)}` : ""}
 							</p>
 							<p className="text-[13px] leading-4.75 font-bold text-foreground">
-								{detail.taskTitle}
+								{work.task_title}
 							</p>
-							{detail.task ? (
+							{task ? (
 								<p className="flex items-center gap-1.5">
-									<TaskStatusMark status={detail.task.status} />
+									<TaskStatusMark status={task.status} />
 									<span className="text-muted-foreground">·</span>
-									<PriorityLabel priority={detail.task.priority} />
+									<PriorityLabel priority={task.priority} />
 								</p>
 							) : null}
 						</CardContent>
@@ -286,14 +296,21 @@ function WorkDetailView({
 							{(
 								[
 									["Status", <StatusBadge key="s" status={status} />],
-									["Branch", detail.branch],
-									["Worktree", detail.worktree],
-									["Agent", detail.agent],
-									["Started", `${detail.started} · ${detail.duration} ago`],
-									["Finished", live ? "Not yet" : detail.started],
-									["Duration", detail.duration],
-									["Exit", detail.exitCode === null ? "None" : detail.exitCode],
-									["Attempt", `${detail.attempt} of task`],
+									["Branch", work.branch],
+									["Worktree", work.worktree_path],
+									["Agent", "Opencode CLI"],
+									["Started", workStartedText(work)],
+									[
+										"Finished",
+										live
+											? "Not yet"
+											: work.finished_at
+												? formatStamp(work.finished_at)
+												: "—",
+									],
+									["Duration", workDurationText(work)],
+									["Exit", exitCode === null ? "None" : exitCode],
+									["Attempt", `${attempt} of task`],
 								] as const
 							).map(([term, value]) => (
 								<div
@@ -312,7 +329,7 @@ function WorkDetailView({
 										onClick={() => void copyLogPath()}
 										className="text-muted-foreground hover:text-foreground hover:underline hover:underline-offset-4"
 									>
-										Download {detail.logFile}
+										Copy log path
 									</button>
 								</dd>
 							</div>

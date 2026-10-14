@@ -1,6 +1,7 @@
 import { useNavigate, useParams } from "@tanstack/react-router";
+import type { Task } from "@/lib/api/tasks";
 import { PriorityLabel, TaskStatusMark } from "./task-utils";
-import { SOURCE_LABELS, type Task, taskDisplayId } from "./tasks-data";
+import { ageText, sourceLabelOf, taskDisplayId, taskMeta } from "./tasks-data";
 
 export function TaskListRow({ task }: { task: Task }) {
 	const { projectId } = useParams({ strict: false });
@@ -8,7 +9,7 @@ export function TaskListRow({ task }: { task: Task }) {
 	const openDetail = () => {
 		navigate({
 			to: "/$projectId/tasks/$taskId",
-			params: { projectId: projectId ?? "", taskId: task.id },
+			params: { projectId: projectId ?? "", taskId: String(task.id) },
 		});
 	};
 	return (
@@ -26,12 +27,12 @@ export function TaskListRow({ task }: { task: Task }) {
 					{taskDisplayId(task)} · {task.title}
 				</span>
 				<span className="truncate text-muted-foreground">
-					{SOURCE_LABELS[task.source]} · {task.meta}
+					{sourceLabelOf(task)} · {taskMeta(task)}
 				</span>
 			</span>
 			<PriorityLabel priority={task.priority} />
 			<span className="w-14 shrink-0 text-right text-muted-foreground">
-				{task.age}
+				{ageText(task.created_at)}
 			</span>
 			<span className="shrink-0 text-muted-foreground">Open</span>
 		</button>

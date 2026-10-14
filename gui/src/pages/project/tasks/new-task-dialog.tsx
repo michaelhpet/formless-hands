@@ -28,21 +28,14 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { fieldErrors } from "@/lib/form";
-import {
-	PRIORITY_LABELS,
-	SOURCE_LABELS,
-	type Task,
-	type TaskSourceKind,
-} from "./tasks-data";
+import { PRIORITY_OPTIONS } from "./tasks-data";
 
 export interface NewTaskInput {
 	title: string;
-	source: TaskSourceKind;
-	priority: Task["priority"];
+	priority: number;
 }
 
-const sourceSchema = z.enum(["linear", "github"]);
-const prioritySchema = z.enum(["0", "1", "2", "3"]);
+const prioritySchema = z.enum(["0", "1", "2", "3", "4"]);
 
 const taskSchema = z.object({
 	title: z
@@ -50,7 +43,6 @@ const taskSchema = z.object({
 		.check(
 			z.refine((value: string) => value.trim() !== "", "Title is required"),
 		),
-	source: sourceSchema,
 	priority: prioritySchema,
 });
 
@@ -61,13 +53,12 @@ export function NewTaskDialog({
 }) {
 	const [open, setOpen] = useState(false);
 	const form = useForm({
-		defaultValues: { title: "", source: "linear", priority: "2" },
+		defaultValues: { title: "", priority: "2" },
 		validators: { onSubmit: taskSchema },
 		onSubmit: ({ value }) => {
 			onCreate({
 				title: value.title.trim(),
-				source: value.source as TaskSourceKind,
-				priority: Number(value.priority) as Task["priority"],
+				priority: Number(value.priority),
 			});
 			form.reset();
 			setOpen(false);
@@ -115,70 +106,38 @@ export function NewTaskDialog({
 								</Field>
 							)}
 						</form.Field>
-						<div className="grid grid-cols-2 gap-4">
-							<form.Field name="source">
-								{(field) => (
-									<Field>
-										<FieldLabel htmlFor="new-task-source">Source</FieldLabel>
-										<Select
-											value={field.state.value}
-											onValueChange={(value) => {
-												if (value !== null) {
-													field.handleChange(value);
-												}
-											}}
-											items={{
-												linear: SOURCE_LABELS.linear,
-												github: SOURCE_LABELS.github,
-											}}
-										>
-											<SelectTrigger id="new-task-source" className="w-full">
-												<SelectValue />
-											</SelectTrigger>
-											<SelectContent>
-												<SelectItem value="linear">
-													{SOURCE_LABELS.linear}
+						<form.Field name="priority">
+							{(field) => (
+								<Field>
+									<FieldLabel htmlFor="new-task-priority">Priority</FieldLabel>
+									<Select
+										value={field.state.value}
+										onValueChange={(value) => {
+											if (value !== null) {
+												field.handleChange(value);
+											}
+										}}
+										items={Object.fromEntries(
+											PRIORITY_OPTIONS.map((option) => [
+												option.value,
+												option.label,
+											]),
+										)}
+									>
+										<SelectTrigger id="new-task-priority" className="w-full">
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent>
+											{PRIORITY_OPTIONS.map((option) => (
+												<SelectItem key={option.value} value={option.value}>
+													{option.label}
 												</SelectItem>
-												<SelectItem value="github">
-													{SOURCE_LABELS.github}
-												</SelectItem>
-											</SelectContent>
-										</Select>
-									</Field>
-								)}
-							</form.Field>
-							<form.Field name="priority">
-								{(field) => (
-									<Field>
-										<FieldLabel htmlFor="new-task-priority">
-											Priority
-										</FieldLabel>
-										<Select
-											value={field.state.value}
-											onValueChange={(value) => {
-												if (value !== null) {
-													field.handleChange(value);
-												}
-											}}
-											items={PRIORITY_LABELS}
-										>
-											<SelectTrigger id="new-task-priority" className="w-full">
-												<SelectValue />
-											</SelectTrigger>
-											<SelectContent>
-												{Object.entries(PRIORITY_LABELS).map(
-													([value, label]) => (
-														<SelectItem key={value} value={value}>
-															{label}
-														</SelectItem>
-													),
-												)}
-											</SelectContent>
-										</Select>
-									</Field>
-								)}
-							</form.Field>
-						</div>
+											))}
+										</SelectContent>
+									</Select>
+								</Field>
+							)}
+						</form.Field>
 					</FieldGroup>
 					<DialogFooter>
 						<DialogClose

@@ -3,7 +3,6 @@ import {
 	IconFolderOpen,
 	IconRefresh,
 	IconSearch,
-	IconTrash,
 } from "@tabler/icons-react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { cn } from "cn";
@@ -47,58 +46,12 @@ import {
 } from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useDebounce } from "@/hooks/use-debounce";
+import type { Project } from "@/lib/api/projects";
+import { usePollProject } from "@/lib/api/projects";
+import type { Source } from "@/lib/api/sources";
 import type { ProjectsSearch } from "@/router";
 
 export type ProjectStatus = "connected" | "error";
-
-export interface ProjectSource {
-	name: string;
-	on: boolean;
-}
-
-export interface Project {
-	id: string;
-	name: string;
-	branch: string;
-	updated: string;
-	status: ProjectStatus;
-	remote: string;
-	localPath: string;
-	error?: string;
-	sources: ProjectSource[];
-	tasksRunning: number;
-	tasksFailed: number;
-}
-
-export function mapApiProject(
-	project: {
-		name: string;
-		remote_url: string;
-		local_path: string;
-		default_branch: string;
-		status: string;
-		status_detail: string;
-	},
-	sources: { name: string; on: boolean }[],
-	tasksRunning: number,
-	tasksFailed: number,
-): Project {
-	const status: ProjectStatus =
-		project.status === "connected" ? "connected" : "error";
-	return {
-		id: project.name,
-		name: project.name,
-		branch: project.default_branch,
-		updated: "",
-		status,
-		remote: project.remote_url,
-		localPath: project.local_path,
-		error: status === "error" ? project.status_detail || undefined : undefined,
-		sources,
-		tasksRunning,
-		tasksFailed,
-	};
-}
 
 type StatusFilter = "all" | ProjectStatus;
 
@@ -113,7 +66,11 @@ function sourceDisplay(name: string): string {
 	return SOURCE_DISPLAY[name] ?? name.charAt(0).toUpperCase() + name.slice(1);
 }
 
-function SourcesCell({ sources }: { sources: ProjectSource[] }) {
+function projectStatus(project: Project): ProjectStatus {
+	return project.status === "connected" ? "connected" : "error";
+}
+
+function SourcesCell({ sources }: { sources: Source[] }) {
 	if (sources.length === 0) {
 		return <span className="text-muted-foreground">— No sources</span>;
 	}
@@ -121,50 +78,50 @@ function SourcesCell({ sources }: { sources: ProjectSource[] }) {
 		<span className="flex flex-col gap-0.5">
 			{sources.map((source) => (
 				<span
-					key={source.name}
+					key={source.id}
 					className={cn(
 						"flex items-center gap-1.5",
-						source.on ? "text-foreground" : "text-muted-foreground",
+						source.enabled ? "text-foreground" : "text-muted-foreground",
 					)}
 				>
 					<span
 						className={cn(
 							"size-1.5 rounded-full",
-							source.on
+							source.enabled
 								? "bg-foreground"
 								: "border border-muted-foreground bg-transparent",
 						)}
 						aria-hidden="true"
 					/>
-					{sourceDisplay(source.name)} {source.on ? "On" : "Off"}
+					{sourceDisplay(source.kind)} {source.enabled ? "On" : "Off"}
 				</span>
 			))}
 		</span>
 	);
 }
 
-function TasksCell({ project }: { project: Project }) {
-	if (project.tasksRunning === 0 && project.tasksFailed === 0) {
+function TasksCell({ running, failed }: { running: number; failed: number }) {
+	if (running === 0 && failed === 0) {
 		return <span className="text-muted-foreground">— Idle</span>;
 	}
 	return (
 		<span className="flex flex-col gap-0.5">
-			{project.tasksRunning > 0 ? (
+			{running > 0 ? (
 				<span className="flex items-center gap-1.5 text-warning">
 					<span
 						className="size-1.5 rounded-full bg-warning"
 						aria-hidden="true"
 					/>
-					{project.tasksRunning} running
+					{running} running
 				</span>
 			) : null}
-			{project.tasksFailed > 0 ? (
+			{failed > 0 ? (
 				<span className="flex items-center gap-1.5 text-destructive">
 					<span
 						className="size-1.5 rounded-full bg-destructive"
 						aria-hidden="true"
 					/>
-					{project.tasksFailed} failed
+					{failed} failed
 				</span>
 			) : null}
 		</span>
@@ -173,6 +130,7 @@ function TasksCell({ project }: { project: Project }) {
 
 function ProjectRowMenu({ project }: { project: Project }) {
 	const navigate = useNavigate();
+	const pollMutation = usePollProject();
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger
@@ -192,20 +150,19 @@ function ProjectRowMenu({ project }: { project: Project }) {
 						onClick={() =>
 							navigate({
 								to: "/$projectId/tasks",
-								params: { projectId: project.id },
+								params: { projectId: project.name },
 							})
 						}
 					>
 						<IconFolderOpen data-icon="inline-start" />
 						Open
 					</DropdownMenuItem>
-					<DropdownMenuItem>
+					<DropdownMenuItem
+						disabled={pollMutation.isPending}
+						onClick={() => pollMutation.mutate(project.name)}
+					>
 						<IconRefresh data-icon="inline-start" />
-						Poll sources
-					</DropdownMenuItem>
-					<DropdownMenuItem variant="destructive">
-						<IconTrash data-icon="inline-start" />
-						Remove
+						{pollMutation.isPending ? "Polling…" : "Poll sources"}
 					</DropdownMenuItem>
 				</DropdownMenuGroup>
 			</DropdownMenuContent>
@@ -213,7 +170,17 @@ function ProjectRowMenu({ project }: { project: Project }) {
 	);
 }
 
-export function ProjectTable({ projects }: { projects: Project[] }) {
+export function ProjectTable({
+	projects,
+	sources,
+	runningByProject,
+	failedByProject,
+}: {
+	projects: Project[];
+	sources: Source[];
+	runningByProject: Map<number, number>;
+	failedByProject: Map<number, number>;
+}) {
 	const navigate = useNavigate();
 	const search = useSearch({ from: "/" });
 	const query = search.q ?? "";
@@ -238,15 +205,15 @@ export function ProjectTable({ projects }: { projects: Project[] }) {
 	};
 
 	const visible = projects.filter((project) => {
-		if (filter !== "all" && project.status !== filter) {
+		if (filter !== "all" && projectStatus(project) !== filter) {
 			return false;
 		}
 		const q = query.trim().toLowerCase();
 		if (!q) {
 			return true;
 		}
-		return [project.name, project.remote, project.localPath].some((field) =>
-			field.toLowerCase().includes(q),
+		return [project.name, project.remote_url, project.local_path].some(
+			(field) => field.toLowerCase().includes(q),
 		);
 	});
 
@@ -260,10 +227,10 @@ export function ProjectTable({ projects }: { projects: Project[] }) {
 		updateSearch({ page: clamped === 1 ? undefined : clamped });
 	};
 
-	const openProject = (projectId: string) => {
+	const openProject = (projectName: string) => {
 		navigate({
 			to: "/$projectId/tasks",
-			params: { projectId },
+			params: { projectId: projectName },
 		});
 	};
 
@@ -373,11 +340,11 @@ export function ProjectTable({ projects }: { projects: Project[] }) {
 										key={project.id}
 										tabIndex={0}
 										className="cursor-default divide-x divide-border"
-										onClick={() => openProject(project.id)}
+										onClick={() => openProject(project.name)}
 										onKeyDown={(event) => {
 											if (event.key === "Enter" || event.key === " ") {
 												event.preventDefault();
-												openProject(project.id);
+												openProject(project.name);
 											}
 										}}
 									>
@@ -387,36 +354,41 @@ export function ProjectTable({ projects }: { projects: Project[] }) {
 													{project.name}
 												</span>
 												<span className="text-muted-foreground">
-													{project.updated === ""
-														? project.branch
-														: `${project.branch} · ${project.updated}`}
+													{project.default_branch}
 												</span>
 											</span>
 										</TableCell>
 										<TableCell>
-											<StatusBadge status={project.status} />
+											<StatusBadge status={projectStatus(project)} />
 										</TableCell>
 										<TableCell>
 											<span className="flex max-w-72 flex-col gap-0.5">
-												<span className="truncate" title={project.remote}>
-													{project.remote}
+												<span className="truncate" title={project.remote_url}>
+													{project.remote_url}
 												</span>
-												{project.error ? (
+												{projectStatus(project) === "error" ? (
 													<span className="text-destructive">
-														{project.error}
+														{project.status_detail || "Error"}
 													</span>
 												) : (
 													<span className="text-muted-foreground">
-														{project.localPath}
+														{project.local_path}
 													</span>
 												)}
 											</span>
 										</TableCell>
 										<TableCell>
-											<SourcesCell sources={project.sources} />
+											<SourcesCell
+												sources={sources.filter(
+													(source) => source.project_id === project.id,
+												)}
+											/>
 										</TableCell>
 										<TableCell>
-											<TasksCell project={project} />
+											<TasksCell
+												running={runningByProject.get(project.id) ?? 0}
+												failed={failedByProject.get(project.id) ?? 0}
+											/>
 										</TableCell>
 										<TableCell
 											className="text-center"

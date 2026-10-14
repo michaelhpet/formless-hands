@@ -104,7 +104,7 @@ enum TaskCmd {
         project: String,
         #[arg(long, default_value = "")]
         body: String,
-        #[arg(long, default_value = "0")]
+        #[arg(long, default_value = "2")]
         priority: i64,
     },
     List {
@@ -344,6 +344,9 @@ async fn main() -> Result<()> {
                 body,
                 priority,
             } => {
+                if !(0..=4).contains(&priority) {
+                    anyhow::bail!("bad priority {priority} — expected 0 (urgent) to 4 (none)");
+                }
                 let conn = open_db()?;
                 let project_id = project_id_by_name(&conn, &project)?;
                 let id = db::insert_task(
@@ -393,6 +396,11 @@ async fn main() -> Result<()> {
                             "invalid status '{s}' — one of: {}",
                             models::status::ALL.join(", ")
                         );
+                    }
+                }
+                if let Some(p) = priority {
+                    if !(0..=4).contains(&p) {
+                        anyhow::bail!("bad priority {p} — expected 0 (urgent) to 4 (none)");
                     }
                 }
                 let conn = open_db()?;

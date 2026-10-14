@@ -1,9 +1,13 @@
+import { lastPollText } from "@/components/daemon-status";
 import {
 	Card,
 	CardContent,
 	CardDescription,
 	CardHeader,
 } from "@/components/ui/card";
+import type { Source } from "@/lib/api/sources";
+import type { Task as TaskRecord } from "@/lib/api/tasks";
+import type { Work as WorkRecord } from "@/lib/api/works";
 
 function Bars({
 	values,
@@ -25,7 +29,46 @@ function Bars({
 	);
 }
 
-export function StatCards({ projectCount }: { projectCount: number }) {
+function barHeights(counts: number[]): string[] {
+	const max = Math.max(1, ...counts);
+	return counts.map(
+		(count) => `${Math.max(4, Math.round((count / max) * 28))}px`,
+	);
+}
+
+export function StatCards({
+	tasks,
+	works,
+	sources,
+	projectCount,
+	connectedCount,
+}: {
+	tasks: TaskRecord[];
+	works: WorkRecord[];
+	sources: Source[];
+	projectCount: number;
+	connectedCount: number;
+}) {
+	const ready = tasks.filter((task) => task.status === "triaged").length;
+	const inReview = tasks.filter((task) => task.status === "in-review").length;
+	const queued = tasks.filter((task) =>
+		["open", "triaged", "needs-context", "blocked"].includes(task.status),
+	).length;
+
+	const running = works.filter((work) => work.finished_at === null).length;
+	const finished = works.filter((work) => work.finished_at !== null);
+	const succeeded = finished.filter((work) => work.exit_code === 0).length;
+	const successRate =
+		finished.length > 0 ? Math.round((succeeded / finished.length) * 100) : 0;
+
+	const enabledSources = sources.filter((source) => source.enabled);
+	const linearCount = enabledSources.filter(
+		(source) => source.kind === "linear",
+	).length;
+	const githubCount = enabledSources.filter(
+		(source) => source.kind === "github",
+	).length;
+
 	return (
 		<div className="grid w-full grid-cols-2 gap-2.5 xl:grid-cols-4">
 			<Card size="sm">
@@ -35,10 +78,14 @@ export function StatCards({ projectCount }: { projectCount: number }) {
 				<CardContent className="flex flex-col gap-1">
 					<div className="text-[26px] leading-8 font-bold">{projectCount}</div>
 					<Bars
-						values={["18px", "24px", "10px"]}
+						values={barHeights([
+							connectedCount,
+							projectCount - connectedCount,
+							projectCount,
+						])}
 						barClassName="bg-primary last:bg-border"
 					/>
-					<p className="text-muted-foreground">2 connected</p>
+					<p className="text-muted-foreground">{connectedCount} connected</p>
 				</CardContent>
 			</Card>
 			<Card size="sm">
@@ -46,12 +93,19 @@ export function StatCards({ projectCount }: { projectCount: number }) {
 					<CardDescription>TASKS QUEUED</CardDescription>
 				</CardHeader>
 				<CardContent className="flex flex-col gap-1">
-					<div className="text-[26px] leading-8 font-bold">27</div>
+					<div className="text-[26px] leading-8 font-bold">{queued}</div>
 					<Bars
-						values={["12px", "20px", "28px", "8px"]}
+						values={barHeights([
+							tasks.filter((task) => task.status === "open").length,
+							ready,
+							inReview,
+							tasks.filter((task) => task.status === "blocked").length,
+						])}
 						barClassName="bg-chart-3 last:bg-border"
 					/>
-					<p className="text-muted-foreground">8 ready · 4 in-review</p>
+					<p className="text-muted-foreground">
+						{ready} ready · {inReview} in-review
+					</p>
 				</CardContent>
 			</Card>
 			<Card size="sm">
@@ -59,18 +113,23 @@ export function StatCards({ projectCount }: { projectCount: number }) {
 					<CardDescription>WORKS ACTIVE</CardDescription>
 				</CardHeader>
 				<CardContent className="flex flex-col gap-1">
-					<div className="text-[26px] leading-8 font-bold">5</div>
+					<div className="text-[26px] leading-8 font-bold">{running}</div>
 					<div
 						className="h-0.75 shrink-0 bg-border"
 						role="progressbar"
-						aria-valuenow={62}
+						aria-valuenow={successRate}
 						aria-valuemin={0}
 						aria-valuemax={100}
 						aria-label="Work success rate"
 					>
-						<div className="h-full w-[62%] bg-success" />
+						<div
+							className="h-full bg-success"
+							style={{ width: `${successRate}%` }}
+						/>
 					</div>
-					<p className="text-muted-foreground">128 total · 91% success</p>
+					<p className="text-muted-foreground">
+						{works.length} total · {successRate}% success
+					</p>
 				</CardContent>
 			</Card>
 			<Card size="sm">
@@ -78,12 +137,16 @@ export function StatCards({ projectCount }: { projectCount: number }) {
 					<CardDescription>SOURCES</CardDescription>
 				</CardHeader>
 				<CardContent className="flex flex-col gap-1">
-					<div className="text-[26px] leading-8 font-bold">4/5</div>
-					<div className="flex gap-1.5">
-						<span className="text-success">Linear 3</span>
-						<span className="text-muted-foreground">GitHub 1</span>
+					<div className="text-[26px] leading-8 font-bold">
+						{enabledSources.length}/{sources.length}
 					</div>
-					<p className="text-muted-foreground">Polled 30s ago</p>
+					<div className="flex gap-1.5">
+						<span className="text-success">Linear {linearCount}</span>
+						<span className="text-muted-foreground">GitHub {githubCount}</span>
+					</div>
+					<p className="text-muted-foreground">
+						{lastPollText(sources.map((source) => source.last_polled_at))}
+					</p>
 				</CardContent>
 			</Card>
 		</div>

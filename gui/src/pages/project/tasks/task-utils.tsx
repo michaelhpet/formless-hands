@@ -1,7 +1,10 @@
 import { cn } from "cn";
-import type { TaskStatus } from "./tasks-data";
+import { STATUS_LABELS, type TaskStatus } from "./tasks-data";
 
-export function PriorityLabel({ priority }: { priority: 0 | 1 | 2 | 3 }) {
+export function PriorityLabel({ priority }: { priority: number }) {
+	if (priority >= 4) {
+		return <span className="text-muted-foreground">–</span>;
+	}
 	return (
 		<span
 			className={cn(
@@ -37,12 +40,15 @@ const STATUS_MARK: Record<TaskStatus, { label: string; className: string }> = {
 	},
 };
 
-export function TaskStatusMark({ status }: { status: TaskStatus }) {
-	const mark = STATUS_MARK[status];
+export function TaskStatusMark({ status }: { status: string }) {
+	const mark = STATUS_MARK[status as TaskStatus] ?? {
+		label: (STATUS_LABELS as Record<string, string>)[status] ?? status,
+		className: "text-muted-foreground",
+	};
 	return <span className={mark.className}>{mark.label}</span>;
 }
 
-export function accentBorderClass(status: TaskStatus): string | undefined {
+export function accentBorderClass(status: string): string | undefined {
 	if (status === "blocked" || status === "needs-context") {
 		return "border-l-2 border-l-destructive";
 	}

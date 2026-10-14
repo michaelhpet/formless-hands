@@ -10,20 +10,22 @@ export interface Task {
 	source_kind: string | null;
 	external_id: string | null;
 	title: string;
-	body?: string;
-	labels?: string;
-	instructions?: string;
+	body: string;
+	labels: string;
+	instructions: string;
 	status: string;
 	priority: number;
 	pr_number: number | null;
-	branch?: string;
-	attempts?: number;
-	last_error?: string;
-	backoff_until?: string;
-	backoff_count?: number;
-	decision_at?: string;
-	decision_note?: string;
-	decision_hash?: string;
+	branch: string;
+	attempts: number;
+	last_error: string;
+	backoff_until: string;
+	backoff_count: number;
+	decision_at: string;
+	decision_note: string;
+	decision_hash: string;
+	created_at: string;
+	updated_at: string;
 }
 
 export interface GetTasksParams {
@@ -172,6 +174,138 @@ export function useCreateReview() {
 		onSuccess: (_review, params) => {
 			void queryClient.invalidateQueries({
 				queryKey: [REVIEWS_QUERY_KEY, params.taskId],
+			});
+			void queryClient.invalidateQueries({ queryKey: [TASKS_QUERY_KEY] });
+		},
+	});
+}
+
+export const DIFF_QUERY_KEY = "diff";
+
+export interface DiffLine {
+	no: number;
+	text: string;
+	kind: string;
+}
+
+export interface DiffNote {
+	body: string;
+	source?: string;
+}
+
+export interface DiffThreadReply {
+	author: string;
+	age: string;
+	body: string;
+}
+
+export interface DiffThread {
+	author: string;
+	path: string;
+	state: string;
+	body: string;
+	age: string;
+	replies: DiffThreadReply[];
+}
+
+export interface DiffHunk {
+	oldRange: string;
+	newRange: string;
+	header?: string;
+	oldLines: DiffLine[];
+	newLines: DiffLine[];
+	thread?: DiffThread;
+	threadAfterNewLine?: number;
+	notes: DiffNote[];
+}
+
+export interface DiffFile {
+	path: string;
+	stats: string;
+	hunks: DiffHunk[];
+}
+
+export interface TaskDiff {
+	taskId: number;
+	workId: number | null;
+	commitSha: string;
+	stale: boolean;
+	truncated: boolean;
+	files: DiffFile[];
+}
+
+function getTaskDiff(taskId: number): Promise<TaskDiff> {
+	return request<TaskDiff>(`/api/tasks/${taskId}/diff`);
+}
+
+export function useTaskDiff(taskId: number | undefined) {
+	return useQuery({
+		queryKey: [DIFF_QUERY_KEY, taskId ?? null],
+		queryFn: () =>
+			taskId === undefined ? Promise.resolve(undefined) : getTaskDiff(taskId),
+		enabled: taskId !== undefined,
+	});
+}
+
+export const DEPENDENCIES_QUERY_KEY = "dependencies";
+
+function getDependencies(taskId: number): Promise<Task[]> {
+	return request<Task[]>(`/api/tasks/${taskId}/dependencies`);
+}
+
+export function useDependencies(taskId: number | undefined) {
+	return useQuery({
+		queryKey: [DEPENDENCIES_QUERY_KEY, taskId ?? null],
+		queryFn: () =>
+			taskId === undefined ? Promise.resolve([]) : getDependencies(taskId),
+		enabled: taskId !== undefined,
+	});
+}
+
+export interface CreateDependencyParams {
+	taskId: number;
+	dependsOn: number;
+	project: string;
+}
+
+function createDependency(params: CreateDependencyParams): Promise<Task> {
+	return request<Task>(`/api/tasks/${params.taskId}/dependencies`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({
+			depends_on: params.dependsOn,
+			project: params.project,
+		}),
+	});
+}
+
+export function useCreateDependency() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: createDependency,
+		onSuccess: (_task, params) => {
+			void queryClient.invalidateQueries({
+				queryKey: [DEPENDENCIES_QUERY_KEY, params.taskId],
+			});
+			void queryClient.invalidateQueries({ queryKey: [TASKS_QUERY_KEY] });
+		},
+	});
+}
+
+function deleteDependency(taskId: number, dep: number): Promise<void> {
+	return request<void>(`/api/tasks/${taskId}/dependencies/${dep}`, {
+		method: "DELETE",
+	});
+}
+
+export function useDeleteDependency() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: ({ taskId, dep }: { taskId: number; dep: number }) =>
+			deleteDependency(taskId, dep),
+		onSuccess: (_data, params) => {
+			void queryClient.invalidateQueries({
+				queryKey: [DEPENDENCIES_QUERY_KEY, params.taskId],
 			});
 			void queryClient.invalidateQueries({ queryKey: [TASKS_QUERY_KEY] });
 		},

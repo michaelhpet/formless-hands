@@ -24,10 +24,16 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
+import type { Task } from "@/lib/api/tasks";
+import { formatStamp } from "@/lib/datetime";
 import { PriorityLabel, TaskStatusMark } from "./task-utils";
-import { SOURCE_LABELS, type Task, taskDisplayId } from "./tasks-data";
+import { sourceLabelOf, taskDisplayId, taskRef } from "./tasks-data";
 
 const PAGE_SIZE = 10;
+
+function taskBranchRef(task: Task): string {
+	return taskRef(task);
+}
 
 function TaskRowMenu({ task }: { task: Task }) {
 	const copy = async (text: string) => {
@@ -44,7 +50,7 @@ function TaskRowMenu({ task }: { task: Task }) {
 					<Button
 						variant="ghost"
 						size="icon-sm"
-						aria-label={`Actions for ${task.id}`}
+						aria-label={`Actions for ${taskDisplayId(task)}`}
 					>
 						<IconDotsVertical />
 					</Button>
@@ -56,8 +62,8 @@ function TaskRowMenu({ task }: { task: Task }) {
 						<IconCopy data-icon="inline-start" />
 						Copy task id
 					</DropdownMenuItem>
-					{task.ref !== "None" ? (
-						<DropdownMenuItem onClick={() => void copy(task.ref)}>
+					{taskBranchRef(task) !== "None" ? (
+						<DropdownMenuItem onClick={() => void copy(taskBranchRef(task))}>
 							<IconCopy data-icon="inline-start" />
 							Copy branch / PR ref
 						</DropdownMenuItem>
@@ -74,7 +80,7 @@ function TaskTableRow({ task }: { task: Task }) {
 	const openDetail = () => {
 		navigate({
 			to: "/$projectId/tasks/$taskId",
-			params: { projectId: projectId ?? "", taskId: task.id },
+			params: { projectId: projectId ?? "", taskId: String(task.id) },
 		});
 	};
 	return (
@@ -104,14 +110,18 @@ function TaskTableRow({ task }: { task: Task }) {
 						className="size-1.5 rounded-full bg-foreground"
 						aria-hidden="true"
 					/>
-					{SOURCE_LABELS[task.source]}
+					{sourceLabelOf(task)}
 				</span>
 			</TableCell>
 			<TableCell>
 				<PriorityLabel priority={task.priority} />
 			</TableCell>
-			<TableCell className="text-muted-foreground">{task.ref}</TableCell>
-			<TableCell className="text-muted-foreground">{task.age}</TableCell>
+			<TableCell className="text-muted-foreground">
+				{taskBranchRef(task)}
+			</TableCell>
+			<TableCell className="text-muted-foreground">
+				{formatStamp(task.created_at)}
+			</TableCell>
 			<TableCell
 				className="text-center"
 				onClick={(event) => event.stopPropagation()}

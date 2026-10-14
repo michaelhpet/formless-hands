@@ -1,20 +1,7 @@
-import type { Work as WorkRecord } from "@/lib/api/works";
+import type { Work } from "@/lib/api/works";
 import { formatStamp, parseUtcStamp } from "@/lib/datetime";
 
 export type WorkStatus = "running" | "success" | "failed";
-
-export interface Work {
-	id: number;
-	taskRef: string;
-	taskTitle: string;
-	branch: string;
-	worktree: string;
-	started: string;
-	duration: string;
-	durationMin: number;
-	exitCode: number | null;
-	status: WorkStatus;
-}
 
 export type WorkStatusFilter = "all" | WorkStatus;
 
@@ -38,34 +25,50 @@ export const STATUS_LABELS: Record<WorkStatusFilter, string> = {
 	failed: "Failed",
 };
 
-export function mapApiWork(work: WorkRecord): Work {
-	const status: WorkStatus =
-		work.finished_at === null
-			? "running"
-			: work.exit_code === 0
-				? "success"
-				: "failed";
+export function workStatusOf(
+	work: Pick<Work, "finished_at" | "exit_code">,
+): WorkStatus {
+	if (work.finished_at === null) {
+		return "running";
+	}
+	return work.exit_code === 0 ? "success" : "failed";
+}
+
+export function workTaskRef(
+	work: Pick<Work, "task_id" | "task_external_id">,
+): string {
+	return work.task_external_id ?? `#${work.task_id}`;
+}
+
+export function workDurationMin(
+	work: Pick<Work, "started_at" | "finished_at">,
+): number {
 	const start = parseUtcStamp(work.started_at).getTime();
 	const end =
 		work.finished_at === null
 			? Date.now()
 			: parseUtcStamp(work.finished_at).getTime();
-	const durationMin =
-		Number.isFinite(start) && Number.isFinite(end) && end >= start
-			? Math.max(0, Math.round((end - start) / 60000))
-			: 0;
-	return {
-		id: work.id,
-		taskRef: work.task_external_id ?? `#${work.task_id}`,
-		taskTitle: work.task_title,
-		branch: work.branch,
-		worktree: work.worktree_path,
-		started: formatStamp(work.started_at),
-		duration: work.finished_at === null ? "live" : `${durationMin}m`,
-		durationMin,
-		exitCode: work.exit_code,
-		status,
-	};
+	if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) {
+		return 0;
+	}
+	return Math.max(0, Math.round((end - start) / 60000));
+}
+
+export function workDurationText(
+	work: Pick<Work, "started_at" | "finished_at">,
+): string {
+	if (work.finished_at === null) {
+		return "live";
+	}
+	return `${workDurationMin(work)}m`;
+}
+
+export function workStartedText(work: Pick<Work, "started_at">): string {
+	return formatStamp(work.started_at);
+}
+
+export function workMeta(work: Work): string {
+	return `${work.branch} · ${workStartedText(work)} · exit ${work.exit_code ?? "—"}`;
 }
 
 export function toggleSort(current: WorkSort, key: WorkSortKey): WorkSort {
@@ -101,129 +104,6 @@ export function ariaSort(
 	return "none";
 }
 
-export const INITIAL_WORKS: Work[] = [
-	{
-		id: 128,
-		taskRef: "LIN-142",
-		taskTitle: "Fix auth refresh loop",
-		branch: "wt-auth-fix",
-		worktree: "~/wt-auth-fix",
-		started: "10:24",
-		duration: "12m",
-		durationMin: 12,
-		exitCode: null,
-		status: "running",
-	},
-	{
-		id: 127,
-		taskRef: "GH-881",
-		taskTitle: "Implement task table for GUI",
-		branch: "wt-gui-table",
-		worktree: "~/wt-gui-table",
-		started: "09:12",
-		duration: "28m",
-		durationMin: 28,
-		exitCode: 0,
-		status: "success",
-	},
-	{
-		id: 126,
-		taskRef: "LIN-139",
-		taskTitle: "Add backoff to source poller",
-		branch: "wt-poll",
-		worktree: "~/wt-poll",
-		started: "Oct 12",
-		duration: "4m",
-		durationMin: 4,
-		exitCode: 1,
-		status: "failed",
-	},
-	{
-		id: 125,
-		taskRef: "GH-870",
-		taskTitle: "Update CLI help text",
-		branch: "wt-docs",
-		worktree: "~/wt-docs",
-		started: "Oct 11",
-		duration: "9m",
-		durationMin: 9,
-		exitCode: 0,
-		status: "success",
-	},
-	{
-		id: 124,
-		taskRef: "LIN-144",
-		taskTitle: "Migrate daemon state file",
-		branch: "wt-state",
-		worktree: "~/wt-state",
-		started: "Oct 11",
-		duration: "31m",
-		durationMin: 31,
-		exitCode: 1,
-		status: "failed",
-	},
-	{
-		id: 123,
-		taskRef: "GH-895",
-		taskTitle: "Document source config schema",
-		branch: "wt-src-docs",
-		worktree: "~/wt-src-docs",
-		started: "Oct 10",
-		duration: "6m",
-		durationMin: 6,
-		exitCode: 0,
-		status: "success",
-	},
-	{
-		id: 122,
-		taskRef: "LIN-138",
-		taskTitle: "Cache poller cursor per source",
-		branch: "wt-cursor",
-		worktree: "~/wt-cursor",
-		started: "Oct 10",
-		duration: "17m",
-		durationMin: 17,
-		exitCode: 0,
-		status: "success",
-	},
-	{
-		id: 121,
-		taskRef: "LIN-142",
-		taskTitle: "Fix auth refresh loop",
-		branch: "wt-auth-fix",
-		worktree: "~/wt-auth-fix",
-		started: "Oct 09",
-		duration: "22m",
-		durationMin: 22,
-		exitCode: 1,
-		status: "failed",
-	},
-	{
-		id: 120,
-		taskRef: "GH-893",
-		taskTitle: "Add empty states for docs tab",
-		branch: "wt-empty",
-		worktree: "~/wt-empty",
-		started: "Oct 09",
-		duration: "11m",
-		durationMin: 11,
-		exitCode: 0,
-		status: "success",
-	},
-	{
-		id: 119,
-		taskRef: "GH-865",
-		taskTitle: "Fix watcher debounce interval",
-		branch: "wt-debounce",
-		worktree: "~/wt-debounce",
-		started: "Oct 08",
-		duration: "8m",
-		durationMin: 8,
-		exitCode: 0,
-		status: "success",
-	},
-];
-
 export function sortWorks(works: Work[], sort: WorkSort): Work[] {
 	const descending = !sort.startsWith("-");
 	const key = (descending ? sort : sort.slice(1)) as WorkSortKey;
@@ -232,7 +112,7 @@ export function sortWorks(works: Work[], sort: WorkSort): Work[] {
 		switch (key) {
 			case "exit":
 				return (
-					((b.exitCode ?? -1) - (a.exitCode ?? -1)) * direction || b.id - a.id
+					((b.exit_code ?? -1) - (a.exit_code ?? -1)) * direction || b.id - a.id
 				);
 			default:
 				return (b.id - a.id) * direction;
@@ -249,21 +129,21 @@ export interface WorkStats {
 }
 
 export function summarizeWorks(works: Work[]): WorkStats {
-	const finished = works.filter((work) => work.status !== "running");
-	const succeeded = finished.filter((work) => work.exitCode === 0).length;
+	const finished = works.filter((work) => work.finished_at !== null);
+	const succeeded = finished.filter((work) => work.exit_code === 0).length;
 	const failed = finished.filter(
-		(work) => work.exitCode !== null && work.exitCode !== 0,
+		(work) => work.exit_code !== null && work.exit_code !== 0,
 	).length;
 	const avgMin =
 		finished.length > 0
 			? Math.round(
-					finished.reduce((sum, work) => sum + work.durationMin, 0) /
+					finished.reduce((sum, work) => sum + workDurationMin(work), 0) /
 						finished.length,
 				)
 			: 0;
 	return {
 		total: works.length,
-		running: works.filter((work) => work.status === "running").length,
+		running: works.filter((work) => work.finished_at === null).length,
 		successRate:
 			finished.length > 0 ? Math.round((succeeded / finished.length) * 100) : 0,
 		failed,

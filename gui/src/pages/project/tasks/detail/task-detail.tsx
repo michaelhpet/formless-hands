@@ -1,11 +1,10 @@
-import { IconFileText, IconSearch } from "@tabler/icons-react";
+import { IconSearch } from "@tabler/icons-react";
 import { Link, useParams } from "@tanstack/react-router";
 import { cn } from "cn";
 import { useState } from "react";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
 	Empty,
 	EmptyContent,
@@ -15,93 +14,53 @@ import {
 	EmptyTitle,
 } from "@/components/ui/empty";
 import { Textarea } from "@/components/ui/textarea";
-import { useTask } from "@/lib/api/tasks";
-import { mapApiTask, type Task } from "../tasks-data";
+import { type Task, useReviews, useTask, useUpdateTask } from "@/lib/api/tasks";
+import { useWorks, type Work } from "@/lib/api/works";
+import { formatStamp } from "@/lib/datetime";
 import { EditTaskDialog } from "./edit-task-dialog";
-import { NewWorkDialog } from "./new-work-dialog";
 import { PrCard } from "./pr-card";
-import { getTaskDetail, type TaskDetail } from "./task-detail-data";
 import { TaskDetailSidebar } from "./task-detail-sidebar";
 
-function DescriptionSection({
-	detail,
-	onToggleCriterion,
-}: {
-	detail: TaskDetail;
-	onToggleCriterion: (index: number) => void;
-}) {
+export interface ReviewReply {
+	author: string;
+	age: string;
+	body: string;
+}
+
+export interface ReviewView {
+	id: number;
+	author: string;
+	path: string;
+	resolved: boolean;
+	body: string;
+	created_at: string;
+	replies: ReviewReply[];
+}
+
+function DescriptionSection({ title, body }: { title: string; body: string }) {
+	const paragraphs = body
+		.split(/\n\n+/)
+		.map((paragraph) => paragraph.trim())
+		.filter((paragraph) => paragraph !== "");
 	return (
 		<section
 			aria-label="Description"
 			className="flex max-w-215 flex-col gap-2.5 px-0.5 pt-1.5 pb-0.5"
 		>
 			<p className="text-[15px] leading-5.5 font-bold text-foreground">
-				{detail.lead}
+				{title}
 			</p>
-			{detail.body.map((paragraph) => (
+			{paragraphs.map((paragraph) => (
 				<p key={paragraph.slice(0, 32)} className="text-[13px] leading-5.25">
 					{paragraph}
 				</p>
 			))}
-			{detail.criteria.length > 0 ? (
-				<>
-					<h2 className="pt-1.5 tracking-wide text-foreground">
-						ACCEPTANCE CRITERIA
-					</h2>
-					<ul className="flex flex-col gap-1.5">
-						{detail.criteria.map((item, index) => (
-							<li key={item.text}>
-								<label
-									htmlFor={`criterion-${index}`}
-									className="flex cursor-pointer items-start gap-2.5"
-								>
-									<Checkbox
-										id={`criterion-${index}`}
-										checked={item.done}
-										onCheckedChange={() => onToggleCriterion(index)}
-										className={cn(
-											item.done
-												? "data-checked:border-success data-checked:bg-success"
-												: "border-muted-foreground",
-										)}
-									/>
-									<span className="text-[13px] text-foreground">
-										{item.text}
-									</span>
-								</label>
-							</li>
-						))}
-					</ul>
-				</>
-			) : null}
-			{detail.attachments.length > 0 ? (
-				<>
-					<h2 className="pt-1.5 tracking-wide text-foreground">
-						ATTACHMENTS · {detail.attachments.length}
-					</h2>
-					<div className="flex flex-wrap gap-2.5">
-						{detail.attachments.map((file) => (
-							<Card key={file.name} className="w-55 gap-0 py-0">
-								<div className="flex h-30 items-center justify-center bg-card">
-									<IconFileText
-										aria-hidden="true"
-										className="size-6 text-muted-foreground"
-									/>
-								</div>
-								<p className="border-t px-2.5 py-2 text-muted-foreground">
-									{file.name} · {file.size}
-								</p>
-							</Card>
-						))}
-					</div>
-				</>
-			) : null}
 		</section>
 	);
 }
 
 function ReviewSection({
-	detail,
+	reviews,
 	replyingTo,
 	replyBody,
 	onStartReply,
@@ -110,7 +69,7 @@ function ReviewSection({
 	onSubmitReply,
 	onToggleResolved,
 }: {
-	detail: TaskDetail;
+	reviews: ReviewView[];
 	replyingTo: number | null;
 	replyBody: string;
 	onStartReply: (index: number) => void;
@@ -124,38 +83,43 @@ function ReviewSection({
 			<CardContent className="flex flex-col gap-2.5">
 				<div className="flex items-center justify-between">
 					<h2 className="tracking-wide text-muted-foreground">
-						REVIEW · {detail.reviews.length}
+						REVIEW · {reviews.length}
 					</h2>
 				</div>
-				{detail.reviews.length === 0 ? (
+				{reviews.length === 0 ? (
 					<p className="text-muted-foreground">No review comments yet.</p>
 				) : null}
-				{detail.reviews.map((comment, index) => {
-					const resolved = comment.state === "resolved";
+				{reviews.map((comment, index) => {
 					return (
 						<div
-							key={`${comment.author}-${comment.path}`}
+							key={comment.id}
 							className={cn(
 								"flex flex-col gap-1.5 border bg-background px-3 py-2.5",
-								resolved && "opacity-70",
+								comment.resolved && "opacity-70",
 							)}
 						>
 							<div className="flex items-center justify-between">
 								<span
 									className={
-										resolved ? "text-muted-foreground" : "text-foreground"
+										comment.resolved
+											? "text-muted-foreground"
+											: "text-foreground"
 									}
 								>
 									{comment.author} · {comment.path}
 								</span>
-								<span className={resolved ? "text-success" : "text-warning"}>
-									{resolved ? "Resolved" : "Open"}
+								<span
+									className={comment.resolved ? "text-success" : "text-warning"}
+								>
+									{comment.resolved ? "Resolved" : "Open"}
 								</span>
 							</div>
 							<p
 								className={cn(
 									"text-[13px] leading-4.5",
-									resolved ? "text-muted-foreground" : "text-foreground",
+									comment.resolved
+										? "text-muted-foreground"
+										: "text-foreground",
 								)}
 							>
 								{comment.body}
@@ -175,8 +139,8 @@ function ReviewSection({
 							))}
 							<div className="flex items-center justify-between">
 								<span className="text-muted-foreground">
-									{comment.age}
-									{resolved ? null : (
+									{comment.created_at}
+									{comment.resolved ? null : (
 										<>
 											{" · "}
 											<button
@@ -194,10 +158,10 @@ function ReviewSection({
 									size="xs"
 									onClick={() => onToggleResolved(index)}
 								>
-									{resolved ? "Reopen" : "Resolve"}
+									{comment.resolved ? "Reopen" : "Resolve"}
 								</Button>
 							</div>
-							{!resolved && replyingTo === index ? (
+							{!comment.resolved && replyingTo === index ? (
 								<form
 									className="flex flex-col gap-2"
 									onSubmit={(event) => {
@@ -239,13 +203,17 @@ function ReviewSection({
 }
 
 function NotesSection({
-	detail,
+	instructions,
+	sessionNotes,
 	noteBody,
+	pending,
 	onNoteBody,
 	onAddNote,
 }: {
-	detail: TaskDetail;
+	instructions: string;
+	sessionNotes: string[];
 	noteBody: string;
+	pending: boolean;
 	onNoteBody: (value: string) => void;
 	onAddNote: () => void;
 }) {
@@ -253,20 +221,29 @@ function NotesSection({
 		<Card>
 			<CardContent className="flex flex-col gap-2.5">
 				<h2 className="tracking-wide text-muted-foreground">
-					NOTES · {detail.notes.length}
+					NOTES · {sessionNotes.length}
 				</h2>
-				{detail.notes.map((note) => (
+				{instructions.trim() !== "" ? (
+					<div className="flex flex-col gap-1.5 border bg-background px-3 py-2.5">
+						<div className="flex items-center justify-between">
+							<span className="text-foreground">Agent instructions</span>
+							<span className="text-muted-foreground">live</span>
+						</div>
+						<p className="text-[13px] leading-4.5 text-foreground whitespace-pre-wrap">
+							{instructions}
+						</p>
+					</div>
+				) : null}
+				{sessionNotes.map((note) => (
 					<div
-						key={`${note.author}-${note.age}-${note.body.slice(0, 16)}`}
+						key={note.slice(0, 32)}
 						className="flex flex-col gap-1.5 border bg-background px-3 py-2.5"
 					>
 						<div className="flex items-center justify-between">
-							<span className="text-foreground">{note.author}</span>
-							<span className="text-muted-foreground">{note.age}</span>
+							<span className="text-foreground">You</span>
+							<span className="text-muted-foreground">just now</span>
 						</div>
-						<p className="text-[13px] leading-4.5 text-foreground">
-							{note.body}
-						</p>
+						<p className="text-[13px] leading-4.5 text-foreground">{note}</p>
 					</div>
 				))}
 				<form
@@ -283,8 +260,12 @@ function NotesSection({
 						onChange={(event) => onNoteBody(event.target.value)}
 					/>
 					<div className="flex justify-end">
-						<Button type="submit" size="sm" disabled={!noteBody.trim()}>
-							Add note
+						<Button
+							type="submit"
+							size="sm"
+							disabled={!noteBody.trim() || pending}
+						>
+							{pending ? "Saving…" : "Add note"}
 						</Button>
 					</div>
 				</form>
@@ -296,7 +277,7 @@ function NotesSection({
 export function TaskDetailPage() {
 	const { projectId, taskId } = useParams({ strict: false });
 	const liveTask = useTask(taskId);
-	const task = liveTask.data ? mapApiTask(liveTask.data) : undefined;
+	const task = liveTask.data;
 
 	if (liveTask.isLoading) {
 		return (
@@ -344,40 +325,38 @@ function TaskDetailView({
 	projectId: string | undefined;
 	task: Task;
 }) {
-	const [detail, setDetail] = useState<TaskDetail>(() => getTaskDetail(task));
+	const reviewsQuery = useReviews(task.id);
+	const worksQuery = useWorks({ project: projectId, limit: 500 });
+	const updateMutation = useUpdateTask();
 	const [noteBody, setNoteBody] = useState("");
+	const [sessionNotes, setSessionNotes] = useState<string[]>([]);
 	const [replyingTo, setReplyingTo] = useState<number | null>(null);
 	const [replyBody, setReplyBody] = useState("");
+	const [localReplies, setLocalReplies] = useState<
+		Record<number, ReviewReply[]>
+	>({});
+	const [flipped, setFlipped] = useState<Record<number, boolean>>({});
 
-	const toggleCriterion = (index: number) => {
-		setDetail((prev) =>
-			prev
-				? {
-						...prev,
-						criteria: prev.criteria.map((item, i) =>
-							i === index ? { ...item, done: !item.done } : item,
-						),
-					}
-				: prev,
-		);
-	};
+	const reviews: ReviewView[] = (reviewsQuery.data ?? []).map((review) => ({
+		id: review.id,
+		author: review.author,
+		path: review.path === "" ? "(general)" : review.path,
+		resolved: review.resolved !== (flipped[review.id] ?? false),
+		body: review.body,
+		created_at: review.created_at,
+		replies: localReplies[review.id] ?? [],
+	}));
+
+	const works: Work[] = (worksQuery.data ?? []).filter(
+		(work) => work.task_id === task.id,
+	);
 
 	const toggleResolved = (index: number) => {
-		setDetail((prev) =>
-			prev
-				? {
-						...prev,
-						reviews: prev.reviews.map((comment, i) =>
-							i === index
-								? {
-										...comment,
-										state: comment.state === "open" ? "resolved" : "open",
-									}
-								: comment,
-						),
-					}
-				: prev,
-		);
+		const id = reviews[index]?.id;
+		if (id === undefined) {
+			return;
+		}
+		setFlipped((prev) => ({ ...prev, [id]: !(prev[id] ?? false) }));
 	};
 
 	const submitReply = (index: number) => {
@@ -385,81 +364,56 @@ function TaskDetailView({
 		if (!body) {
 			return;
 		}
-		setDetail((prev) =>
-			prev
-				? {
-						...prev,
-						reviews: prev.reviews.map((comment, i) =>
-							i === index
-								? {
-										...comment,
-										replies: [
-											...comment.replies,
-											{ author: "You", age: "just now", body },
-										],
-									}
-								: comment,
-						),
-					}
-				: prev,
-		);
+		const id = reviews[index]?.id;
+		if (id === undefined) {
+			return;
+		}
+		setLocalReplies((prev) => ({
+			...prev,
+			[id]: [...(prev[id] ?? []), { author: "You", age: "just now", body }],
+		}));
 		setReplyBody("");
 		setReplyingTo(null);
 	};
 
 	const addNote = () => {
 		const body = noteBody.trim();
-		if (!body) {
+		if (!body || updateMutation.isPending) {
 			return;
 		}
-		setDetail((prev) =>
-			prev
-				? {
-						...prev,
-						notes: [...prev.notes, { author: "You", age: "just now", body }],
-					}
-				: prev,
+		setSessionNotes((prev) => [...prev, body]);
+		updateMutation.mutate(
+			{ id: task.id, instructions: body },
+			{
+				onSuccess: () => setNoteBody(""),
+				onError: () =>
+					setSessionNotes((prev) => prev.filter((note) => note !== body)),
+			},
 		);
-		setNoteBody("");
 	};
 
-	const startWork = (branch: string) => {
-		setDetail((prev) => {
-			if (!prev) {
-				return prev;
-			}
-			const nextId =
-				prev.works.length > 0
-					? Math.max(...prev.works.map((w) => w.id)) + 1
-					: 1;
-			return {
-				...prev,
-				works: [
-					{ id: nextId, status: "queued", meta: `${branch} · just now` },
-					...prev.works,
-				],
-			};
-		});
+	const queueWork = () => {
+		updateMutation.mutate({ id: task.id, status: "triaged" });
 	};
 
-	const latestWork = detail.works[0];
-	const failed = detail.status === "blocked" || latestWork?.status === "failed";
-	const succeeded = !failed && latestWork?.status === "success";
+	const latestWork = works[0];
+	const latestStatus =
+		latestWork == null
+			? null
+			: latestWork.finished_at === null
+				? "running"
+				: latestWork.exit_code === 0
+					? "success"
+					: "failed";
+	const failed = task.status === "blocked" || latestStatus === "failed";
+	const succeeded = !failed && latestStatus === "success";
 	const locked =
 		succeeded ||
-		["completed", "in-review", "merged", "closed"].includes(detail.status);
+		["completed", "in-review", "merged", "closed"].includes(task.status);
 	const reviewable =
-		["completed", "in-review", "merged"].includes(detail.status) ||
-		detail.reviews.length > 0;
+		["completed", "in-review", "merged"].includes(task.status) ||
+		reviews.length > 0;
 	const primaryIsReview = succeeded || (!failed && !latestWork && reviewable);
-
-	const retryWork = () => {
-		startWork(
-			detail.branch !== "None"
-				? detail.branch
-				: `wt-${detail.id.toLowerCase()}`,
-		);
-	};
 
 	return (
 		<div className="flex w-full flex-1 flex-col gap-3 px-5 py-4">
@@ -476,27 +430,37 @@ function TaskDetailView({
 						>
 							Tasks
 						</Link>,
-						detail.id,
+						String(task.id),
 					]}
 				/>
 				<div className="flex items-start justify-between gap-3 max-lg:flex-col">
 					<div className="flex min-w-0 flex-col gap-1">
-						<h1 className="text-lg leading-6.5 font-bold">{detail.title}</h1>
-						<p className="text-muted-foreground">Opened {detail.openedAge}</p>
+						<h1 className="text-lg leading-6.5 font-bold">{task.title}</h1>
+						<p className="text-muted-foreground">
+							Opened {formatStamp(task.created_at)}
+						</p>
 					</div>
 					<div className="flex shrink-0 flex-wrap items-center gap-2">
 						{locked ? null : (
 							<EditTaskDialog
-								key={detail.id}
-								title={detail.title}
-								priority={detail.priority}
-								onSave={(input) =>
-									setDetail((prev) => (prev ? { ...prev, ...input } : prev))
-								}
+								key={task.id}
+								priority={task.priority}
+								onSave={(input) => {
+									if (input.priority !== task.priority) {
+										updateMutation.mutate({
+											id: task.id,
+											priority: input.priority,
+										});
+									}
+								}}
 							/>
 						)}
 						{failed ? (
-							<Button variant="outline" onClick={retryWork}>
+							<Button
+								variant="outline"
+								onClick={queueWork}
+								disabled={updateMutation.isPending}
+							>
 								Retry
 							</Button>
 						) : latestWork ? (
@@ -505,7 +469,7 @@ function TaskDetailView({
 									to="/$projectId/tasks/$taskId/review"
 									params={{
 										projectId: projectId ?? "",
-										taskId: detail.id,
+										taskId: String(task.id),
 									}}
 								>
 									<Button>Review</Button>
@@ -514,7 +478,7 @@ function TaskDetailView({
 								<Link
 									to="/$projectId/works"
 									params={{ projectId: projectId ?? "" }}
-									search={{ task: detail.id }}
+									search={{ task: String(task.id) }}
 								>
 									<Button>See work</Button>
 								</Link>
@@ -524,20 +488,22 @@ function TaskDetailView({
 								to="/$projectId/tasks/$taskId/review"
 								params={{
 									projectId: projectId ?? "",
-									taskId: detail.id,
+									taskId: String(task.id),
 								}}
 							>
 								<Button>Review</Button>
 							</Link>
 						) : (
-							<NewWorkDialog onCreate={startWork} />
+							<Button onClick={queueWork} disabled={updateMutation.isPending}>
+								Queue work
+							</Button>
 						)}
 						{reviewable && !primaryIsReview ? (
 							<Link
 								to="/$projectId/tasks/$taskId/review"
 								params={{
 									projectId: projectId ?? "",
-									taskId: detail.id,
+									taskId: String(task.id),
 								}}
 							>
 								<Button variant="outline">Review</Button>
@@ -549,25 +515,20 @@ function TaskDetailView({
 
 			<div className="flex w-full items-start gap-4 max-xl:flex-col">
 				<div className="flex min-w-0 flex-1 flex-col gap-3">
-					{detail.lastError ? (
+					{task.last_error.trim() !== "" ? (
 						<Card>
 							<CardContent className="flex flex-col gap-1">
 								<span className="text-[13px] font-bold text-destructive">
-									Attempt {detail.lastError.attempt} failed
+									Attempt {task.attempts} failed
 								</span>
-								<p className="text-[13px] text-foreground">
-									{detail.lastError.text}
-								</p>
+								<p className="text-[13px] text-foreground">{task.last_error}</p>
 							</CardContent>
 						</Card>
 					) : null}
 					<PrCard projectName={projectId} task={task} />
-					<DescriptionSection
-						detail={detail}
-						onToggleCriterion={toggleCriterion}
-					/>
+					<DescriptionSection title={task.title} body={task.body} />
 					<ReviewSection
-						detail={detail}
+						reviews={reviews}
 						replyingTo={replyingTo}
 						replyBody={replyBody}
 						onStartReply={(index) => {
@@ -583,13 +544,27 @@ function TaskDetailView({
 						onToggleResolved={toggleResolved}
 					/>
 					<NotesSection
-						detail={detail}
+						instructions={task.instructions}
+						sessionNotes={sessionNotes}
 						noteBody={noteBody}
+						pending={updateMutation.isPending}
 						onNoteBody={setNoteBody}
 						onAddNote={addNote}
 					/>
+					{updateMutation.isError ? (
+						<p className="text-destructive">
+							Couldn't save:{" "}
+							{updateMutation.error instanceof Error
+								? updateMutation.error.message
+								: "unknown error"}
+						</p>
+					) : null}
 				</div>
-				<TaskDetailSidebar projectId={projectId ?? ""} detail={detail} />
+				<TaskDetailSidebar
+					projectId={projectId ?? ""}
+					task={task}
+					works={works}
+				/>
 			</div>
 		</div>
 	);

@@ -37,12 +37,13 @@ import { useWorks } from "@/lib/api/works";
 import type { WorksSearch } from "@/router";
 import {
 	DEFAULT_SORT,
-	mapApiWork,
 	STATUS_FILTERS,
 	STATUS_LABELS,
 	sortWorks,
 	summarizeWorks,
 	type WorkStatusFilter,
+	workStatusOf,
+	workTaskRef,
 } from "./works-data";
 import { WorksTableView } from "./works-table-view";
 
@@ -81,7 +82,7 @@ export function WorksPage() {
 	const sort = search.sort ?? DEFAULT_SORT;
 	const task = search.task ?? "all";
 	const worksQuery = useWorks({ project: projectId, limit: 200 });
-	const works = (worksQuery.data ?? []).map(mapApiWork);
+	const works = worksQuery.data ?? [];
 
 	const updateSearch = (patch: Partial<WorksSearch>) => {
 		navigate({
@@ -108,33 +109,40 @@ export function WorksPage() {
 
 	const stats = summarizeWorks(works);
 	const tasks = useMemo(
-		() => [...new Map(works.map((work) => [work.taskRef, work])).values()],
+		() => [...new Map(works.map((work) => [workTaskRef(work), work])).values()],
 		[works],
 	);
 	const taskItems = useMemo(
 		() =>
 			ComboboxPrimitive.createItems(tasks, {
-				getValue: (work) => work.taskRef,
-				getLabel: (work) => `${work.taskRef}: ${work.taskTitle}`,
+				getValue: (work) => workTaskRef(work),
+				getLabel: (work) => `${workTaskRef(work)}: ${work.task_title}`,
 			}),
 		[tasks],
 	);
 
 	const visible = sortWorks(
 		works.filter((work) => {
-			if (status !== "all" && work.status !== status) {
+			if (status !== "all" && workStatusOf(work) !== status) {
 				return false;
 			}
-			if (task !== "all" && work.taskRef !== task) {
+			if (
+				task !== "all" &&
+				workTaskRef(work) !== task &&
+				String(work.task_id) !== task
+			) {
 				return false;
 			}
 			const q = query.trim().toLowerCase();
 			if (!q) {
 				return true;
 			}
-			return [work.branch, work.taskRef, work.taskTitle, work.worktree].some(
-				(field) => field.toLowerCase().includes(q),
-			);
+			return [
+				work.branch,
+				workTaskRef(work),
+				work.task_title,
+				work.worktree_path,
+			].some((field) => field.toLowerCase().includes(q));
 		}),
 		sort,
 	);
@@ -174,12 +182,15 @@ export function WorksPage() {
 							<ComboboxEmpty>No tasks found.</ComboboxEmpty>
 							<ComboboxList>
 								{(work) => (
-									<ComboboxItem key={work.taskRef} value={work.taskRef}>
+									<ComboboxItem
+										key={workTaskRef(work)}
+										value={workTaskRef(work)}
+									>
 										<span
 											className="block min-w-0 max-w-64 truncate"
-											title={`${work.taskRef}: ${work.taskTitle}`}
+											title={`${workTaskRef(work)}: ${work.task_title}`}
 										>
-											{work.taskRef}: {work.taskTitle}
+											{workTaskRef(work)}: {work.task_title}
 										</span>
 									</ComboboxItem>
 								)}

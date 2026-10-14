@@ -154,13 +154,15 @@ fn task_row(r: &rusqlite::Row) -> rusqlite::Result<Task> {
         decision_at: r.get(17)?,
         decision_note: r.get(18)?,
         decision_hash: r.get(19)?,
+        created_at: r.get(20)?,
+        updated_at: r.get(21)?,
     })
 }
 
 const TASK_COLS: &str = "t.id, t.project_id, t.task_source_id, s.kind, t.external_id,
     t.title, t.body, t.labels, t.instructions, t.status, t.priority, t.pr_number,
     t.branch, t.attempts, t.last_error, t.backoff_until, t.backoff_count,
-    t.decision_at, t.decision_note, t.decision_hash";
+    t.decision_at, t.decision_note, t.decision_hash, t.created_at, t.updated_at";
 
 pub fn list_tasks(
     conn: &Connection,
@@ -173,7 +175,7 @@ pub fn list_tasks(
         "SELECT {TASK_COLS}
          FROM tasks t LEFT JOIN task_sources s ON s.id = t.task_source_id
          WHERE (?1 IS NULL OR t.project_id = ?1) AND (?2 IS NULL OR t.status = ?2)
-         ORDER BY t.priority DESC, t.id ASC LIMIT ?3 OFFSET ?4"
+         ORDER BY t.priority ASC, t.id ASC LIMIT ?3 OFFSET ?4"
     );
     let mut st = conn.prepare(&sql)?;
     let rows = st.query_map((project_id, status, limit, offset), task_row)?;

@@ -1,7 +1,12 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { SOURCES_QUERY_KEY } from "./sources";
-import { REVIEWS_QUERY_KEY, TASKS_QUERY_KEY } from "./tasks";
+import {
+	DEPENDENCIES_QUERY_KEY,
+	DIFF_QUERY_KEY,
+	REVIEWS_QUERY_KEY,
+	TASKS_QUERY_KEY,
+} from "./tasks";
 import { WORKS_QUERY_KEY } from "./works";
 
 export interface PipelineEvent {
@@ -47,11 +52,13 @@ export function usePipelineEvents() {
 				case "work.correction":
 					void queryClient.invalidateQueries({ queryKey: [TASKS_QUERY_KEY] });
 					void queryClient.invalidateQueries({ queryKey: [WORKS_QUERY_KEY] });
+					void queryClient.invalidateQueries({ queryKey: [DIFF_QUERY_KEY] });
 					break;
 				case "review.ready":
 				case "review.decision":
 					void queryClient.invalidateQueries({ queryKey: [TASKS_QUERY_KEY] });
 					void queryClient.invalidateQueries({ queryKey: [REVIEWS_QUERY_KEY] });
+					void queryClient.invalidateQueries({ queryKey: [DIFF_QUERY_KEY] });
 					break;
 				case "work.merged":
 				case "work.pr_ready":
@@ -60,6 +67,10 @@ export function usePipelineEvents() {
 					void queryClient.invalidateQueries({ queryKey: [TASKS_QUERY_KEY] });
 					void queryClient.invalidateQueries({ queryKey: [WORKS_QUERY_KEY] });
 					void queryClient.invalidateQueries({ queryKey: [SOURCES_QUERY_KEY] });
+					void queryClient.invalidateQueries({ queryKey: [DIFF_QUERY_KEY] });
+					void queryClient.invalidateQueries({
+						queryKey: [DEPENDENCIES_QUERY_KEY],
+					});
 					break;
 				default:
 					break;

@@ -269,11 +269,11 @@ pub fn api_key() -> Result<String> {
 
 pub fn task_priority(linear_priority: i64) -> i64 {
     match linear_priority {
-        1 => 4,
-        2 => 3,
+        1 => 0,
+        2 => 1,
         3 => 2,
-        4 => 1,
-        _ => 0,
+        4 => 3,
+        _ => 4,
     }
 }
 

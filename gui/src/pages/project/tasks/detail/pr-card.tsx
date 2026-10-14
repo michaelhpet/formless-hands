@@ -2,8 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useProjects } from "@/lib/api/projects";
 import { useConfig } from "@/lib/api/settings";
-import { useReviews } from "@/lib/api/tasks";
-import type { Task } from "../tasks-data";
+import { type Task, useReviews } from "@/lib/api/tasks";
 
 function githubSlug(remote: string): string | null {
 	const clean = remote.trim().replace(/\.git$/, "");
@@ -35,15 +34,12 @@ export function PrCard({
 }) {
 	const projectsQuery = useProjects();
 	const configQuery = useConfig();
-	const numericId = /^\d+$/.test(task.id) ? Number(task.id) : undefined;
-	const reviewsQuery = useReviews(numericId);
+	const reviewsQuery = useReviews(task.id);
 	const project = (projectsQuery.data ?? []).find(
 		(item) => item.name === projectName,
 	);
 	const slug =
-		project && task.branch !== "" && task.branch !== "None"
-			? githubSlug(project.remote_url)
-			: null;
+		project && task.branch !== "" ? githubSlug(project.remote_url) : null;
 	const approved =
 		configQuery.data?.merge.mode === "pr" &&
 		slug !== null &&

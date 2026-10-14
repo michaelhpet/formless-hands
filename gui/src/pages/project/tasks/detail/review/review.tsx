@@ -2,28 +2,31 @@ import { IconSearch } from "@tabler/icons-react";
 import { Link, useParams } from "@tanstack/react-router";
 import { cn } from "cn";
 import { useState } from "react";
-import { DiffViewer } from "@/components/diff-viewer";
+import { DiffViewer, type ReviewFile } from "@/components/diff-viewer";
 import { PageBreadcrumb } from "@/components/page-breadcrumb";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
 	Empty,
-	EmptyContent,
 	EmptyDescription,
 	EmptyHeader,
 	EmptyMedia,
 	EmptyTitle,
 } from "@/components/ui/empty";
-import { useCreateReview, useTask } from "@/lib/api/tasks";
-import { mapApiTask, type Task } from "../../tasks-data";
+import {
+	type Task,
+	useCreateReview,
+	useTask,
+	useTaskDiff,
+} from "@/lib/api/tasks";
+import { taskDisplayId, taskRef } from "../../tasks-data";
 import { FinishReviewMenu, type ReviewDecision } from "./finish-review-menu";
-import { getTaskReview, type TaskReview } from "./review-data";
+import { diffFiles, diffSubtitle } from "./review-data";
 
 export function TaskReviewPage() {
 	const { projectId, taskId } = useParams({ strict: false });
 	const liveTask = useTask(taskId);
-	const task = liveTask.data ? mapApiTask(liveTask.data) : undefined;
+	const task = liveTask.data;
 
 	if (liveTask.isLoading) {
 		return (
@@ -46,16 +49,6 @@ export function TaskReviewPage() {
 							No task with id "{taskId}" in this project.
 						</EmptyDescription>
 					</EmptyHeader>
-					<EmptyContent>
-						<Link
-							to="/$projectId/tasks"
-							params={{ projectId: projectId ?? "" }}
-						>
-							<Button variant="outline" size="sm">
-								Back to tasks
-							</Button>
-						</Link>
-					</EmptyContent>
 				</Empty>
 			</div>
 		);
@@ -72,10 +65,11 @@ function TaskReviewView({
 	task: Task;
 }) {
 	const createReview = useCreateReview();
-	const prRef = task.ref.startsWith("PR ") ? task.ref.split(" · ")[0] : "None";
-	const [review, setReview] = useState<TaskReview>(() =>
-		getTaskReview(task, prRef),
-	);
+	const diffQuery = useTaskDiff(task.id);
+	const [localFiles, setLocalFiles] = useState<ReviewFile[] | null>(null);
+	const files = localFiles ?? diffFiles(diffQuery.data);
+	const prRef = taskRef(task);
+	const subtitle = diffSubtitle(diffQuery.data, task, prRef);
 	const [approved, setApproved] = useState(false);
 	const [replyingKey, setReplyingKey] = useState<string | null>(null);
 	const [replyBody, setReplyBody] = useState("");
@@ -100,7 +94,7 @@ function TaskReviewView({
 	};
 
 	const anyNotesOpen =
-		review.files.some((file, fileIndex) =>
+		files.some((file, fileIndex) =>
 			file.hunks.some(
 				(hunk, hunkIndex) =>
 					hunk.agentNotes.length > 0 &&
@@ -108,7 +102,7 @@ function TaskReviewView({
 			),
 		) ?? false;
 
-	const openComments = review.files.reduce(
+	const openComments = files.reduce(
 		(count, file) =>
 			count + file.hunks.filter((hunk) => hunk.thread?.state === "open").length,
 		0,
@@ -120,34 +114,29 @@ function TaskReviewView({
 			return;
 		}
 		const [fileIndex, hunkIndex] = key.split(":").map(Number);
-		setReview((prev) => {
-			if (!prev) {
-				return prev;
-			}
-			return {
-				...prev,
-				files: prev.files.map((file, fi) =>
-					fi !== fileIndex
-						? file
-						: {
-								...file,
-								hunks: file.hunks.map((hunk, hi) =>
-									hi !== hunkIndex || !hunk.thread
-										? hunk
-										: {
-												...hunk,
-												thread: {
-													...hunk.thread,
-													replies: [
-														...hunk.thread.replies,
-														{ author: "You", age: "just now", body },
-													],
-												},
+		setLocalFiles((prev) => {
+			const base = prev ?? diffFiles(diffQuery.data);
+			return base.map((file, fi) =>
+				fi !== fileIndex
+					? file
+					: {
+							...file,
+							hunks: file.hunks.map((hunk, hi) =>
+								hi !== hunkIndex || !hunk.thread
+									? hunk
+									: {
+											...hunk,
+											thread: {
+												...hunk.thread,
+												replies: [
+													...hunk.thread.replies,
+													{ author: "You", age: "just now", body },
+												],
 											},
-								),
-							},
-				),
-			};
+										},
+							),
+						},
+			);
 		});
 		setReplyBody("");
 		setReplyingKey(null);
@@ -173,20 +162,18 @@ function TaskReviewView({
 							to="/$projectId/tasks/$taskId"
 							params={{
 								projectId: projectId ?? "",
-								taskId: review.taskId,
+								taskId: String(task.id),
 							}}
 						>
-							{review.taskId}
+							{taskDisplayId(task)}
 						</Link>,
 						"Review",
 					]}
 				/>
 				<div className="flex items-start justify-between gap-3 max-lg:flex-col">
 					<div className="flex min-w-0 flex-col gap-1">
-						<h1 className="text-lg leading-6.5 font-bold">
-							Review · {review.prRef}
-						</h1>
-						<p className="text-muted-foreground">{review.subtitle}</p>
+						<h1 className="text-lg leading-6.5 font-bold">Review · {prRef}</h1>
+						<p className="text-muted-foreground">{subtitle}</p>
 					</div>
 					<div className="flex shrink-0 flex-wrap items-center gap-2">
 						<Badge variant="outline">
@@ -205,22 +192,17 @@ function TaskReviewView({
 								setApproved(decision === "approved");
 								const trimmed = message.trim();
 								setSummary(trimmed ? { decision, message: trimmed } : null);
-								const numericId = Number(task.id);
-								if (Number.isInteger(numericId)) {
-									createReview.mutate({
-										taskId: numericId,
-										body:
-											trimmed === ""
-												? decision === "approved"
-													? "Approved"
-													: "Changes requested"
-												: trimmed,
-										kind:
-											decision === "approved"
-												? "approved"
-												: "changes-requested",
-									});
-								}
+								createReview.mutate({
+									taskId: task.id,
+									body:
+										trimmed === ""
+											? decision === "approved"
+												? "Approved"
+												: "Changes requested"
+											: trimmed,
+									kind:
+										decision === "approved" ? "approved" : "changes-requested",
+								});
 							}}
 						/>
 					</div>
@@ -251,7 +233,9 @@ function TaskReviewView({
 				</Card>
 			) : null}
 
-			{review.files.length === 0 ? (
+			{diffQuery.isLoading ? (
+				<p className="text-muted-foreground">Loading diff…</p>
+			) : files.length === 0 ? (
 				<Empty>
 					<EmptyHeader>
 						<EmptyMedia variant="icon">
@@ -259,13 +243,13 @@ function TaskReviewView({
 						</EmptyMedia>
 						<EmptyTitle>No reviewable changes</EmptyTitle>
 						<EmptyDescription>
-							No changed files to review on {review.taskId} yet.
+							No changed files to review on {taskDisplayId(task)} yet.
 						</EmptyDescription>
 					</EmptyHeader>
 				</Empty>
 			) : (
 				<DiffViewer
-					files={review.files}
+					files={files}
 					replyingKey={replyingKey}
 					replyBody={replyBody}
 					notesClosed={notesClosed}

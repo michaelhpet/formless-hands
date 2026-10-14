@@ -8,7 +8,7 @@ import {
 import { useSources } from "@/lib/api/sources";
 import { parseUtcStamp } from "@/lib/datetime";
 
-function lastPollText(stamps: (string | null)[]): string {
+export function lastPollText(stamps: (string | null)[]): string {
 	const times = stamps
 		.filter((stamp): stamp is string => stamp !== null && stamp !== "")
 		.map((stamp) => parseUtcStamp(stamp).getTime())
@@ -36,9 +36,19 @@ function lastPollText(stamps: (string | null)[]): string {
 
 export function DaemonStatus({ className }: { className?: string }) {
 	const sourcesQuery = useSources();
+	const sources = sourcesQuery.data ?? [];
+	const failing = sources.filter(
+		(source) => source.last_error.trim() !== "",
+	).length;
 	const text = sourcesQuery.isLoading
 		? "Loading…"
-		: lastPollText((sourcesQuery.data ?? []).map((s) => s.last_polled_at));
+		: sourcesQuery.isError
+			? "Couldn't reach daemon"
+			: lastPollText(sources.map((s) => s.last_polled_at));
+	const dot =
+		sourcesQuery.isError || failing > 0 ? "bg-destructive" : "bg-success";
+	const label =
+		sourcesQuery.isError || failing > 0 ? "Daemon attention" : "Daemon rampant";
 
 	return (
 		<Tooltip>
@@ -46,14 +56,17 @@ export function DaemonStatus({ className }: { className?: string }) {
 				render={
 					<Badge variant="outline" className={cn("gap-1.5", className)}>
 						<span
-							className="size-1.5 rounded-full bg-success"
+							className={cn("size-1.5 rounded-full", dot)}
 							aria-hidden="true"
 						/>
-						Daemon rampant
+						{label}
 					</Badge>
 				}
 			/>
-			<TooltipContent>{text}</TooltipContent>
+			<TooltipContent>
+				{failing > 0 ? `${failing} source(s) failing · ` : null}
+				{text}
+			</TooltipContent>
 		</Tooltip>
 	);
 }
