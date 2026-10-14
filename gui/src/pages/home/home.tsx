@@ -75,9 +75,9 @@ export function HomePage() {
 					<NewProjectDialog onCreate={createProject} />
 				</div>
 				<StatCards
+					projects={projects}
 					tasks={tasks}
 					works={worksQuery.data ?? []}
-					sources={sourcesQuery.data ?? []}
 					projectCount={projects.length}
 					connectedCount={connected}
 				/>

@@ -204,6 +204,8 @@ export function ProjectTable({
 		});
 	};
 
+	const filtering = query.trim() !== "" || filter !== "all";
+
 	const visible = projects.filter((project) => {
 		if (filter !== "all" && projectStatus(project) !== filter) {
 			return false;
@@ -289,26 +291,34 @@ export function ProjectTable({
 						</EmptyMedia>
 						<EmptyTitle>No projects found</EmptyTitle>
 						<EmptyDescription>
-							No projects match "{query}"
-							{filter !== "all" ? ` with status ${filter}` : ""}. Try a
-							different search or filter.
+							{filtering ? (
+								<>
+									No projects match "{query.trim()}"
+									{filter !== "all" ? ` with status ${filter}` : ""}. Try a
+									different search or filter.
+								</>
+							) : (
+								"No projects yet. Add your first project to start polling tasks."
+							)}
 						</EmptyDescription>
 					</EmptyHeader>
-					<EmptyContent>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={() => {
-								updateSearch({
-									q: undefined,
-									status: undefined,
-									page: undefined,
-								});
-							}}
-						>
-							Clear filters
-						</Button>
-					</EmptyContent>
+					{filtering ? (
+						<EmptyContent>
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={() => {
+									updateSearch({
+										q: undefined,
+										status: undefined,
+										page: undefined,
+									});
+								}}
+							>
+								Clear filters
+							</Button>
+						</EmptyContent>
+					) : null}
 				</Empty>
 			) : (
 				<div className="flex flex-col gap-3">

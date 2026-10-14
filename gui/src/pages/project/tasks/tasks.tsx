@@ -147,6 +147,8 @@ export function TasksPage() {
 		});
 	};
 
+	const filtering = query.trim() !== "" || status !== "all" || source !== "all";
+
 	const clearFilters = () => {
 		updateSearch({
 			q: undefined,
@@ -283,17 +285,27 @@ export function TasksPage() {
 						</EmptyMedia>
 						<EmptyTitle>No tasks found</EmptyTitle>
 						<EmptyDescription>
-							No tasks match "{query}"
-							{status !== "all" ? ` with status ${STATUS_LABELS[status]}` : ""}
-							{source !== "all" ? ` from ${SOURCE_LABELS[source]}` : ""}. Try a
-							different search or filter.
+							{filtering ? (
+								<>
+									No tasks match "{query.trim()}"
+									{status !== "all"
+										? ` with status ${STATUS_LABELS[status]}`
+										: ""}
+									{source !== "all" ? ` from ${SOURCE_LABELS[source]}` : ""}.
+									Try a different search or filter.
+								</>
+							) : (
+								"No tasks yet. Poll a source or create the first task to see it here."
+							)}
 						</EmptyDescription>
 					</EmptyHeader>
-					<EmptyContent>
-						<Button variant="outline" size="sm" onClick={clearFilters}>
-							Clear filters
-						</Button>
-					</EmptyContent>
+					{filtering ? (
+						<EmptyContent>
+							<Button variant="outline" size="sm" onClick={clearFilters}>
+								Clear filters
+							</Button>
+						</EmptyContent>
+					) : null}
 				</Empty>
 			) : view === "kanban" ? (
 				<div className="min-h-0 flex-1 overflow-hidden">
