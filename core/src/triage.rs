@@ -52,45 +52,118 @@ fn work_age_secs(started_at: &str) -> Option<i64> {
     Some((now - started).num_seconds().max(0))
 }
 
-pub async fn triage_once(cfg: &Config) -> Result<()> {
+#[derive(Debug, Default, Clone)]
+pub struct TriageStats {
+    pub promoted: usize,
+    pub unblocked: usize,
+    pub parked: usize,
+    pub waiting: usize,
+    pub needs_context: usize,
+    pub blocked: usize,
+    pub recovered: usize,
+    pub running: usize,
+    pub waiting_on_deps: usize,
+}
+
+fn judge_single(conn: &rusqlite::Connection, task: &models::Task) -> Result<Option<String>> {
+    if linear::backoff_active(&task.backoff_until) {
+        return Ok(None);
+    }
+    if task.status != models::status::OPEN
+        && task.status != models::status::BLOCKED
+        && task.status != models::status::NEEDS_CONTEXT
+    {
+        return Ok(None);
+    }
+    let deps_open = db::dependency_statuses(conn, task.id)?
+        .into_iter()
+        .any(|(_, status)| status != models::status::MERGED && status != models::status::CLOSED);
+    if deps_open {
+        return Ok(None);
+    }
+    if task.status != models::status::OPEN
+        && content_hash(task) == task.decision_hash
+        && !task.decision_hash.is_empty()
+    {
+        return Ok(None);
+    }
+    let hash = content_hash(task);
+    let next = match rule_judge(task) {
+        Judgment::Actionable => models::status::TRIAGED.to_string(),
+        Judgment::NeedsContext(note) => {
+            db::record_decision(conn, task.id, models::status::NEEDS_CONTEXT, &note, &hash)?;
+            return Ok(Some(models::status::NEEDS_CONTEXT.to_string()));
+        }
+        Judgment::Blocked(note) => {
+            db::record_decision(conn, task.id, models::status::BLOCKED, &note, &hash)?;
+            return Ok(Some(models::status::BLOCKED.to_string()));
+        }
+    };
+    db::record_decision(conn, task.id, &next, "", &hash)?;
+    Ok(Some(next))
+}
+
+pub fn retriage_task(id: i64) -> Result<Option<String>> {
+    let conn = db::connect()?;
+    db::migrate(&conn)?;
+    let Some(task) = db::get_task(&conn, id)? else {
+        return Ok(None);
+    };
+    let previous = task.status.clone();
+    let project_id = task.project_id;
+    let next = judge_single(&conn, &task)?;
+    if let Some(ref status) = next {
+        if status != &previous {
+            crate::events::publish(
+                "triage.promoted",
+                Some(project_id),
+                Some(id),
+                None,
+                format!("task #{id} {previous} -> {status}"),
+            );
+        }
+    }
+    Ok(next)
+}
+
+pub async fn triage_once(cfg: &Config) -> Result<TriageStats> {
     let conn = db::connect()?;
     db::migrate(&conn)?;
     let stuck_after = (cfg.service.work_timeout_secs * 2) as i64;
-    let mut promoted = 0usize;
-    let mut unblocked = 0usize;
-    let mut parked = 0usize;
-    let mut waiting = 0usize;
-    let mut needs_context = 0usize;
-    let mut blocked = 0usize;
-    let mut recovered = 0usize;
-    let mut running = 0usize;
-    let mut waiting_on_deps = 0usize;
+    let mut stats = TriageStats::default();
 
     for task in db::list_tasks(&conn, None, Some(models::status::OPEN), 500, 0)? {
         if linear::backoff_active(&task.backoff_until) {
-            waiting += 1;
+            stats.waiting += 1;
             continue;
         }
         let deps_open = db::dependency_statuses(&conn, task.id)?
             .into_iter()
             .any(|(_, status)| status != models::status::MERGED && status != models::status::CLOSED);
         if deps_open {
-            waiting_on_deps += 1;
+            stats.waiting_on_deps += 1;
             continue;
         }
         let hash = content_hash(&task);
         match rule_judge(&task) {
             Judgment::Actionable => {
                 db::record_decision(&conn, task.id, models::status::TRIAGED, "", &hash)?;
-                promoted += 1;
+                stats.promoted += 1;
+                crate::events::publish(
+                    "triage.promoted",
+                    Some(task.project_id),
+                    Some(task.id),
+                    None,
+                    format!("task #{} promoted to triaged", task.id),
+                );
             }
             Judgment::NeedsContext(note) => {
                 db::record_decision(&conn, task.id, models::status::NEEDS_CONTEXT, &note, &hash)?;
-                needs_context += 1;
+                stats.needs_context += 1;
             }
             Judgment::Blocked(note) => {
                 db::record_decision(&conn, task.id, models::status::BLOCKED, &note, &hash)?;
-                blocked += 1;
+                stats.blocked += 1;
             }
         }
     }
@@ -98,11 +171,11 @@ pub async fn triage_once(cfg: &Config) -> Result<()> {
     for status in [models::status::BLOCKED, models::status::NEEDS_CONTEXT] {
         for task in db::list_tasks(&conn, None, Some(status), 500, 0)? {
             if linear::backoff_active(&task.backoff_until) {
-                waiting += 1;
+                stats.waiting += 1;
                 continue;
             }
             if content_hash(&task) == task.decision_hash && !task.decision_hash.is_empty() {
-                parked += 1;
+                stats.parked += 1;
                 continue;
             }
             let previous = task.status.clone();
@@ -111,7 +184,14 @@ pub async fn triage_once(cfg: &Config) -> Result<()> {
                     let hash = content_hash(&task);
                     db::record_decision(&conn, task.id, models::status::TRIAGED, "", &hash)?;
                     tracing::info!(task = task.id, was = %previous, "triage: re-reviewed actionable");
-                    unblocked += 1;
+                    stats.unblocked += 1;
+                    crate::events::publish(
+                        "triage.promoted",
+                        Some(task.project_id),
+                        Some(task.id),
+                        None,
+                        format!("task #{} {previous} -> triaged", task.id),
+                    );
                 }
                 Judgment::NeedsContext(note) => {
                     let hash = content_hash(&task);
@@ -131,10 +211,10 @@ pub async fn triage_once(cfg: &Config) -> Result<()> {
             None => {
                 db::requeue_task(&conn, task.id)?;
                 tracing::info!(task = task.id, "triage: recovered orphan claim");
-                recovered += 1;
+                stats.recovered += 1;
             }
             Some(w) if agent_alive(w.pid) => {
-                running += 1;
+                stats.running += 1;
             }
             Some(w) => {
                 let old = work_age_secs(&w.started_at).unwrap_or(i64::MAX);
@@ -144,22 +224,22 @@ pub async fn triage_once(cfg: &Config) -> Result<()> {
                 db::finish_work(&conn, w.id, -2)?;
                 db::requeue_task(&conn, task.id)?;
                 tracing::warn!(task = task.id, work = w.id, age_secs = old, "triage: reaped dead work");
-                recovered += 1;
+                stats.recovered += 1;
             }
         }
     }
 
     tracing::info!(
-        promoted,
-        needs_context,
-        blocked,
-        unblocked,
-        parked,
-        waiting,
-        waiting_on_deps,
-        recovered,
-        running,
+        promoted = stats.promoted,
+        needs_context = stats.needs_context,
+        blocked = stats.blocked,
+        unblocked = stats.unblocked,
+        parked = stats.parked,
+        waiting = stats.waiting,
+        waiting_on_deps = stats.waiting_on_deps,
+        recovered = stats.recovered,
+        running = stats.running,
         "triage: judged open and blocked tasks"
     );
-    Ok(())
+    Ok(stats)
 }

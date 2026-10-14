@@ -2,7 +2,15 @@ use crate::config::Config;
 use crate::{db, models, worker};
 use anyhow::{Context, Result};
 
-pub async fn watch_once(cfg: &Config) -> Result<()> {
+pub struct WatchStats {
+    pub corrected: usize,
+    pub merged: usize,
+    pub prs: usize,
+    pub swept: usize,
+    pub promoted: usize,
+}
+
+pub async fn watch_once(cfg: &Config) -> Result<WatchStats> {
     let tasks = {
         let conn = db::connect()?;
         db::migrate(&conn)?;
@@ -13,11 +21,13 @@ pub async fn watch_once(cfg: &Config) -> Result<()> {
     let mut corrected = 0usize;
     let mut merged = 0usize;
     let mut prs = 0usize;
+    let mut promoted = 0usize;
     for task in &tasks {
         match watch_task(cfg, task).await {
             Ok(WatchAction::Corrected) => corrected += 1,
             Ok(WatchAction::Merged) => merged += 1,
             Ok(WatchAction::PrReady) => prs += 1,
+            Ok(WatchAction::Promoted) => promoted += 1,
             Ok(WatchAction::Idle) => {}
             Err(e) => tracing::error!(task = task.id, "{e:#}"),
         }
@@ -61,8 +71,8 @@ pub async fn watch_once(cfg: &Config) -> Result<()> {
             swept += 1;
         }
     }
-    tracing::info!(corrected, merged, prs, swept, "watcher: reviewed completed tasks");
-    Ok(())
+    tracing::info!(corrected, merged, prs, swept, promoted, "watcher: reviewed completed tasks");
+    Ok(WatchStats { corrected, merged, prs, swept, promoted })
 }
 
 enum WatchAction {
@@ -70,6 +80,7 @@ enum WatchAction {
     Corrected,
     Merged,
     PrReady,
+    Promoted,
 }
 
 async fn watch_task(cfg: &Config, task: &models::Task) -> Result<WatchAction> {
@@ -95,18 +106,54 @@ async fn watch_task(cfg: &Config, task: &models::Task) -> Result<WatchAction> {
             db::unresolved_changes(&conn, task.id)?,
         )
     };
-    if task.status == models::status::COMPLETED && unresolved > 0 {
+    if unresolved > 0 {
         run_correction(&project, task, cfg.service.work_timeout_secs, &cfg.explain).await?;
+        crate::events::publish(
+            "work.correction",
+            Some(task.project_id),
+            Some(task.id),
+            None,
+            format!("task #{} correction started", task.id),
+        );
         return Ok(WatchAction::Corrected);
     }
+    if task.status == models::status::COMPLETED {
+        let conn = db::connect()?;
+        db::update_task(&conn, task.id, Some(models::status::IN_REVIEW), None, None)?;
+        crate::events::publish(
+            "review.ready",
+            Some(task.project_id),
+            Some(task.id),
+            None,
+            format!("task #{} completed -> in-review", task.id),
+        );
+        return Ok(WatchAction::Promoted);
+    }
     let approved = matches!(decision, Some(ref d) if d.kind == models::review_kind::APPROVAL);
-    if !approved || unresolved > 0 {
+    if !approved {
         return Ok(WatchAction::Idle);
     }
     if cfg.merge.mode == "pr" {
-        return ready_pr(&project, task).await;
+        let action = ready_pr(&project, task).await?;
+        if matches!(action, WatchAction::PrReady) {
+            crate::events::publish(
+                "work.pr_ready",
+                Some(task.project_id),
+                Some(task.id),
+                None,
+                format!("task #{} pr ready", task.id),
+            );
+        }
+        return Ok(action);
     }
     merge_local(&project, task).await?;
+    crate::events::publish(
+        "work.merged",
+        Some(task.project_id),
+        Some(task.id),
+        None,
+        format!("task #{} merged", task.id),
+    );
     Ok(WatchAction::Merged)
 }
 
@@ -222,6 +269,13 @@ async fn run_correction(project: &models::Project, task: &models::Task, timeout_
                 let conn = db::connect()?;
                 db::resolve_changes(&conn, task.id)?;
                 db::update_task(&conn, task.id, Some(models::status::IN_REVIEW), None, None)?;
+                crate::events::publish(
+                    "review.ready",
+                    Some(task.project_id),
+                    Some(task.id),
+                    Some(work_id),
+                    format!("task #{} correction done, awaiting review", task.id),
+                );
                 tracing::info!(task = task.id, work = work_id, "watcher: correction done, awaiting review");
             } else {
                 let msg = format!(

@@ -1,12 +1,15 @@
-use crate::{config, db, diff, models, poller, projects, sources};
+use crate::{config, db, diff, events, models, poller, projects, sources};
 use anyhow::{Context, Result};
 use axum::{
     extract::{Path, Query},
     http::{header, HeaderName, StatusCode},
+    response::sse::{Event as SseEvent, KeepAlive, Sse},
     routing::{delete, get, post},
     Json, Router,
 };
 use serde::Deserialize;
+use std::convert::Infallible;
+use tokio_stream::wrappers::BroadcastStream;
 
 #[cfg(not(gui_stub))]
 static GUI: include_dir::Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/gui/dist");
@@ -50,6 +53,7 @@ pub fn router() -> Router {
         .route("/api/tasks/{id}/dependencies/{dep}", delete(api_dependency_delete))
         .route("/api/works", get(api_works))
         .route("/api/works/{id}", get(api_work))
+        .route("/api/events", get(api_events))
         .route("/api/config", get(api_config).put(api_config_save))
         .route("/", get(index))
         .route("/{*path}", get(asset))
@@ -136,6 +140,24 @@ async fn api_project_poll(
     let totals = poller::poll_project(project_id)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    events::publish(
+        "poll.finished",
+        Some(project_id),
+        None,
+        None,
+        format!("polled {} source(s), {} open issue(s)", totals.sources, totals.upserted),
+    );
+    if let Ok(cfg) = config::load() {
+        if let Ok(stats) = crate::triage::triage_once(&cfg).await {
+            events::publish(
+                "triage.finished",
+                Some(project_id),
+                None,
+                None,
+                format!("triage: {} promoted, {} unblocked", stats.promoted, stats.unblocked),
+            );
+        }
+    }
     Ok(Json(serde_json::json!({ "sources": totals.sources, "upserted": totals.upserted })))
 }
 
@@ -308,6 +330,8 @@ async fn api_task_create(
     let task = db::get_task(&conn, id)
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?
         .ok_or((StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
+    drop(conn);
+    let _ = crate::triage::retriage_task(id);
     Ok((StatusCode::CREATED, Json(task)))
 }
 
@@ -342,6 +366,9 @@ async fn api_task_update(
     {
         return Err((StatusCode::NOT_FOUND, format!("no task #{id}")));
     }
+    drop(conn);
+    let _ = crate::triage::retriage_task(id);
+    let conn = db::connect().map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
     let task = db::get_task(&conn, id)
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?
         .ok_or((StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
@@ -387,6 +414,19 @@ async fn api_work(Path(id): Path<i64>) -> Result<Json<models::Work>, StatusCode>
         Some(w) => Ok(Json(w)),
         None => Err(StatusCode::NOT_FOUND),
     }
+}
+
+async fn api_events() -> Sse<impl tokio_stream::Stream<Item = Result<SseEvent, Infallible>>> {
+    use tokio_stream::StreamExt;
+    let rx = events::subscribe();
+    let stream = BroadcastStream::new(rx).map(|item| {
+        let payload = match item {
+            Ok(event) => serde_json::to_string(&event).unwrap_or_else(|_| "{}".to_string()),
+            Err(_) => "{\"kind\":\"lagged\"}".to_string(),
+        };
+        Ok::<SseEvent, Infallible>(SseEvent::default().data(payload))
+    });
+    Sse::new(stream).keep_alive(KeepAlive::default())
 }
 
 async fn api_config() -> Result<Json<config::Config>, (StatusCode, String)> {
@@ -469,6 +509,18 @@ async fn api_review_create(
         .into_iter()
         .find(|r| r.id == review_id)
         .ok_or((StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
+    let project_id = db::get_task(&conn, id)
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?
+        .map(|t| t.project_id);
+    drop(conn);
+    events::publish(
+        "review.decision",
+        project_id,
+        Some(id),
+        None,
+        format!("task #{id} review {kind} by {}", review.author),
+    );
+    let _ = crate::triage::retriage_task(id);
     Ok((StatusCode::CREATED, Json(review)))
 }
 
@@ -750,6 +802,8 @@ async fn api_dependency_create(
     let dep = db::get_task(&conn, body.depends_on)
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?
         .ok_or((StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
+    drop(conn);
+    let _ = crate::triage::retriage_task(id);
     Ok((StatusCode::CREATED, Json(dep)))
 }
 
@@ -761,6 +815,8 @@ async fn api_dependency_delete(
         return Err(StatusCode::NOT_FOUND);
     }
     if db::remove_dependency(&conn, id, dep).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? {
+        drop(conn);
+        let _ = crate::triage::retriage_task(id);
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(StatusCode::NOT_FOUND)

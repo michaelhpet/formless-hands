@@ -1,6 +1,7 @@
 mod config;
 mod db;
 mod diff;
+mod events;
 mod explain;
 mod ipc;
 mod linear;
@@ -357,7 +358,11 @@ async fn main() -> Result<()> {
                         priority,
                     },
                 )?;
-                println!("created task #{id}");
+                drop(conn);
+                match triage::retriage_task(id)? {
+                    Some(status) => println!("created task #{id} ({status})"),
+                    None => println!("created task #{id}"),
+                }
             }
             TaskCmd::List { project, status, limit } => {
                 let conn = open_db()?;
@@ -399,7 +404,11 @@ async fn main() -> Result<()> {
                     priority,
                     instructions.as_deref(),
                 )?;
-                println!("updated task #{id}");
+                drop(conn);
+                match triage::retriage_task(id)? {
+                    Some(next) => println!("updated task #{id} ({next})"),
+                    None => println!("updated task #{id}"),
+                }
             }
             TaskCmd::Depend { id, project, on } => {
                 let conn = open_db()?;
@@ -431,26 +440,115 @@ async fn main() -> Result<()> {
 async fn pipeline_tick(cfg: &config::Config) {
     let start = std::time::Instant::now();
     tracing::info!("tick=pipeline start");
-    if let Err(e) = poller::poll_once().await {
-        tracing::error!(error = %e, "tick=pipeline poll failed");
-        return;
+    match poller::poll_once().await {
+        Ok(totals) => {
+            crate::events::publish(
+                "poll.finished",
+                None,
+                None,
+                None,
+                format!("polled {} source(s), {} open issue(s)", totals.sources, totals.upserted),
+            );
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "tick=pipeline poll failed");
+            return;
+        }
     }
-    if let Err(e) = triage::triage_once(cfg).await {
-        tracing::error!(error = %e, "tick=pipeline triage failed");
-        return;
+    match triage::triage_once(cfg).await {
+        Ok(stats) => {
+            crate::events::publish(
+                "triage.finished",
+                None,
+                None,
+                None,
+                format!(
+                    "triage: {} promoted, {} unblocked, {} waiting",
+                    stats.promoted, stats.unblocked, stats.waiting,
+                ),
+            );
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "tick=pipeline triage failed");
+            return;
+        }
     }
-    if let Err(e) = worker::work_once(cfg).await {
-        tracing::error!(error = %e, "tick=pipeline worker failed");
+    for _ in 0..20 {
+        match worker::work_once(cfg).await {
+            Ok(worker::WorkOutcome::Idle) => break,
+            Ok(worker::WorkOutcome::Finished { .. }) => {
+                if let Err(e) = triage::triage_once(cfg).await {
+                    tracing::error!(error = %e, "tick=pipeline re-triage failed");
+                    break;
+                }
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "tick=pipeline worker failed");
+                break;
+            }
+        }
+        if db::connect()
+            .map(|conn| db::has_open_work(&conn).unwrap_or(true))
+            .unwrap_or(true)
+        {
+            break;
+        }
+        let remaining = db::connect()
+            .map(|conn| {
+                db::list_tasks(&conn, None, Some(models::status::TRIAGED), 1, 0)
+                    .map(|v| v.len())
+                    .unwrap_or(0)
+            })
+            .unwrap_or(0);
+        if remaining == 0 {
+            break;
+        }
     }
+    match watcher::watch_once(cfg).await {
+        Ok(stats) => {
+            if stats.merged + stats.corrected + stats.promoted + stats.prs > 0 {
+                crate::events::publish(
+                    "watch.finished",
+                    None,
+                    None,
+                    None,
+                    format!(
+                        "watch: {} merged, {} corrected, {} promoted",
+                        stats.merged, stats.corrected, stats.promoted,
+                    ),
+                );
+            }
+        }
+        Err(e) => tracing::error!(error = %e, "tick=pipeline watch failed"),
+    }
+    crate::events::publish("tick.done", None, None, None, "pipeline tick done".to_string());
     tracing::info!(elapsed_ms = start.elapsed().as_millis(), "tick=pipeline done");
 }
 
 async fn watch_tick(cfg: &config::Config) {
     let start = std::time::Instant::now();
     tracing::info!("tick=watch start");
-    if let Err(e) = watcher::watch_once(cfg).await {
-        tracing::error!(error = %e, "tick=watch failed");
+    match watcher::watch_once(cfg).await {
+        Ok(stats) => {
+            if stats.merged + stats.corrected + stats.promoted + stats.prs > 0 {
+                crate::events::publish(
+                    "watch.finished",
+                    None,
+                    None,
+                    None,
+                    format!(
+                        "watch: {} merged, {} corrected, {} promoted",
+                        stats.merged, stats.corrected, stats.promoted,
+                    ),
+                );
+                if let Err(e) = triage::triage_once(cfg).await {
+                    tracing::error!(error = %e, "tick=watch re-triage failed");
+                }
+            }
+        }
+        Err(e) => tracing::error!(error = %e, "tick=watch failed"),
     }
+    crate::events::publish("tick.done", None, None, None, "watch tick done".to_string());
     tracing::info!(elapsed_ms = start.elapsed().as_millis(), "tick=watch done");
 }
 

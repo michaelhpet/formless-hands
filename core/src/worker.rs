@@ -87,10 +87,37 @@ pub(crate) async fn git_worktree_add(checkout: &str, path: &str, branch: &str) -
     anyhow::bail!("git worktree add failed: {err}")
 }
 
-pub async fn work_once(cfg: &Config) -> Result<()> {
+pub enum WorkOutcome {
+    Idle,
+    Finished { task_id: i64, work_id: i64, code: i64 },
+}
+
+pub fn promote_completed_to_review(task_id: i64) -> Result<bool> {
+    let conn = db::connect()?;
+    let Some(task) = db::get_task(&conn, task_id)? else {
+        return Ok(false);
+    };
+    if task.status != models::status::COMPLETED {
+        return Ok(false);
+    }
+    if db::unresolved_changes(&conn, task_id)? > 0 {
+        return Ok(false);
+    }
+    db::update_task(&conn, task_id, Some(models::status::IN_REVIEW), None, None)?;
+    crate::events::publish(
+        "review.ready",
+        Some(task.project_id),
+        Some(task_id),
+        None,
+        format!("task #{task_id} completed -> in-review"),
+    );
+    Ok(true)
+}
+
+pub async fn work_once(cfg: &Config) -> Result<WorkOutcome> {
     if db::connect().map(|conn| db::has_open_work(&conn).unwrap_or(true))? {
         tracing::info!("worker: previous work still open, skipping");
-        return Ok(());
+        return Ok(WorkOutcome::Idle);
     }
     let task = {
         let conn = db::connect()?;
@@ -101,7 +128,7 @@ pub async fn work_once(cfg: &Config) -> Result<()> {
         Some(t) => t,
         None => {
             tracing::info!("worker: no triaged tasks, idle");
-            return Ok(());
+            return Ok(WorkOutcome::Idle);
         }
     };
     let project = {
@@ -116,7 +143,7 @@ pub async fn work_once(cfg: &Config) -> Result<()> {
         }
         _ => {
             tracing::warn!(task = task.id, "worker: project not connected, skipping");
-            return Ok(());
+            return Ok(WorkOutcome::Idle);
         }
     };
 
@@ -128,7 +155,7 @@ pub async fn work_once(cfg: &Config) -> Result<()> {
     };
     if !claimed {
         tracing::info!(task = task.id, "worker: task already claimed, skipping");
-        return Ok(());
+        return Ok(WorkOutcome::Idle);
     }
 
     let worktree_root = crate::config::expand_home("~/.local/share/formless-hands/worktrees");
@@ -139,8 +166,15 @@ pub async fn work_once(cfg: &Config) -> Result<()> {
     if let Err(e) = git_worktree_add(&project.local_path, &worktree_str, &branch).await {
         let conn = db::connect()?;
         db::block_task(&conn, task.id, &e.to_string())?;
+        crate::events::publish(
+            "work.blocked",
+            Some(task.project_id),
+            Some(task.id),
+            None,
+            format!("task #{} blocked: {e:#}", task.id),
+        );
         tracing::error!(task = task.id, "{e:#}");
-        return Ok(());
+        return Ok(WorkOutcome::Finished { task_id: task.id, work_id: 0, code: -1 });
     }
 
     let prompt_path = state_file("prompts", task.id, attempt, "md")?;
@@ -156,8 +190,15 @@ pub async fn work_once(cfg: &Config) -> Result<()> {
     {
         let conn = db::connect()?;
         db::block_task(&conn, task.id, &e.to_string())?;
+        crate::events::publish(
+            "work.blocked",
+            Some(task.project_id),
+            Some(task.id),
+            None,
+            format!("task #{} blocked: {e:#}", task.id),
+        );
         tracing::error!(task = task.id, "{e:#}");
-        return Ok(());
+        return Ok(WorkOutcome::Finished { task_id: task.id, work_id: 0, code: -1 });
     }
 
     let log_path = state_file("transcripts", task.id, attempt, "log")?;
@@ -170,8 +211,15 @@ pub async fn work_once(cfg: &Config) -> Result<()> {
     {
         let conn = db::connect()?;
         db::block_task(&conn, task.id, &e.to_string())?;
+        crate::events::publish(
+            "work.blocked",
+            Some(task.project_id),
+            Some(task.id),
+            None,
+            format!("task #{} blocked: {e:#}", task.id),
+        );
         tracing::error!(task = task.id, "{e:#}");
-        return Ok(());
+        return Ok(WorkOutcome::Finished { task_id: task.id, work_id: 0, code: -1 });
     }
 
     let work_id = {
@@ -180,13 +228,29 @@ pub async fn work_once(cfg: &Config) -> Result<()> {
     };
 
     tracing::info!(task = task.id, work = work_id, branch = %branch, "worker: agent running");
+    crate::events::publish(
+        "work.started",
+        Some(task.project_id),
+        Some(task.id),
+        Some(work_id),
+        format!("task #{} work #{work_id} started on {branch}", task.id),
+    );
+    let project_id = task.project_id;
+    let task_id = task.id;
     match run_agent(&worktree_str, &prompt, &log_path, &[], cfg.service.work_timeout_secs).await {
         Err(msg) => {
             let conn = db::connect()?;
             finish_failed(&conn, work_id, -1, &msg).ok();
             db::block_task(&conn, task.id, &msg)?;
+            crate::events::publish(
+                "work.blocked",
+                Some(project_id),
+                Some(task_id),
+                Some(work_id),
+                format!("task #{task_id} blocked: {msg}"),
+            );
             tracing::error!(task = task.id, work = work_id, "{msg}");
-            return Ok(());
+            return Ok(WorkOutcome::Finished { task_id, work_id, code: -1 });
         }
         Ok(outcome) if outcome.timed_out => {
             let msg = format!("agent timed out after {}s", cfg.service.work_timeout_secs);
@@ -202,8 +266,15 @@ pub async fn work_once(cfg: &Config) -> Result<()> {
                 task.id,
                 &crate::linear::backoff_until_now_plus(crate::linear::backoff_delay_secs(1)),
             )?;
+            crate::events::publish(
+                "work.timeout",
+                Some(project_id),
+                Some(task_id),
+                Some(work_id),
+                format!("task #{task_id} timed out — released to triage"),
+            );
             tracing::warn!(task = task.id, work = work_id, "{msg} — released to triage with backoff");
-            return Ok(());
+            return Ok(WorkOutcome::Finished { task_id, work_id, code: 124 });
         }
         Ok(outcome) => {
             let conn = db::connect()?;
@@ -212,6 +283,7 @@ pub async fn work_once(cfg: &Config) -> Result<()> {
             }
             record_session(&conn, work_id, &log_path);
             db::finish_work(&conn, work_id, outcome.code)?;
+            let code = outcome.code;
             if outcome.code == 0 {
                 drop(conn);
                 match crate::explain::explain_work(&task, work_id, &worktree_str, &project.default_branch, &cfg.explain).await {
@@ -220,15 +292,30 @@ pub async fn work_once(cfg: &Config) -> Result<()> {
                 }
                 let conn = db::connect()?;
                 db::update_task(&conn, task.id, Some(models::status::COMPLETED), None, None)?;
+                crate::events::publish(
+                    "work.finished",
+                    Some(project_id),
+                    Some(task_id),
+                    Some(work_id),
+                    format!("task #{task_id} work #{work_id} completed"),
+                );
                 tracing::info!(task = task.id, work = work_id, "worker: completed");
+                let _ = promote_completed_to_review(task_id);
             } else {
                 let msg = format!("agent exited with code {}: {}", outcome.code, outcome.stderr_tail);
                 db::block_task(&conn, task.id, &msg)?;
+                crate::events::publish(
+                    "work.blocked",
+                    Some(project_id),
+                    Some(task_id),
+                    Some(work_id),
+                    format!("task #{task_id} blocked: {msg}"),
+                );
                 tracing::error!(task = task.id, work = work_id, "{msg}");
             }
+            return Ok(WorkOutcome::Finished { task_id, work_id, code });
         }
     }
-    Ok(())
 }
 
 fn session_in(value: &serde_json::Value) -> Option<String> {
