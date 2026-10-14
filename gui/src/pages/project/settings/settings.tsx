@@ -221,8 +221,8 @@ function ProjectSettingsForm({
 	const lastPolled =
 		pollText ??
 		(stamps.length > 0
-			? `last polled ${formatStamp(stamps[stamps.length - 1])}`
-			: "never polled");
+			? `Last polled ${formatStamp(stamps[stamps.length - 1])}`
+			: "Never polled");
 
 	return (
 		<div className="flex w-full flex-1 flex-col gap-3 px-5 py-4">
@@ -376,7 +376,7 @@ function ProjectSettingsForm({
 									/>
 									{sourceDisplay(source.name)}
 								</span>
-								<span className="text-muted-foreground">
+								<span className="text-muted-foreground truncate">
 									{source.config} · cursor {source.cursor}
 								</span>
 								<span className="grow" />

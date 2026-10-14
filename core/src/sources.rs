@@ -26,27 +26,23 @@ pub async fn resolve_config(
         anyhow::bail!("pass either url or key=value pairs, not both");
     }
     let mut map = serde_json::Map::new();
-    let mut notice = None;
+    let notice = None;
     if let Some(link) = url {
-        match linear::parse_linear_url(link)? {
-            linear::UrlScope::Team(team) => {
-                map.insert("team".to_string(), serde_json::Value::String(team));
-            }
-            linear::UrlScope::Project(uuid) => {
-                let (name, teams) = linear::resolve_project(&uuid).await?;
-                if teams.len() > 1 {
-                    notice = Some(format!(
-                        "project spans {} teams — scoping to {}",
-                        teams.len(),
-                        teams[0]
-                    ));
-                }
-                map.insert(
-                    "team".to_string(),
-                    serde_json::Value::String(teams[0].clone()),
-                );
-                map.insert("project".to_string(), serde_json::Value::String(name));
-            }
+        let scope = linear::parse_linear_url(link)?;
+        if let Some(team) = scope.team {
+            map.insert("team".to_string(), serde_json::Value::String(team));
+        }
+        if let Some(slug) = scope.project_slug {
+            map.insert("projectSlug".to_string(), serde_json::Value::String(slug));
+        }
+        if let Some(slug_id) = scope.project_slug_id {
+            map.insert(
+                "projectSlugId".to_string(),
+                serde_json::Value::String(slug_id),
+            );
+        }
+        if let Some(label) = scope.label {
+            map.insert("label".to_string(), serde_json::Value::String(label));
         }
     }
     for (k, v) in set {

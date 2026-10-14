@@ -36,24 +36,28 @@ impl std::fmt::Display for PollError {
 impl std::error::Error for PollError {}
 
 pub struct Scope {
-    pub team: String,
+    pub team: Option<String>,
     pub project: Option<String>,
+    pub project_slug_id: Option<String>,
     pub label: Option<String>,
 }
 
-pub enum UrlScope {
-    Team(String),
-    Project(String),
+#[derive(Debug, Default)]
+pub struct LinearUrlScope {
+    pub team: Option<String>,
+    pub project_slug: Option<String>,
+    pub project_slug_id: Option<String>,
+    pub label: Option<String>,
 }
 
-pub fn parse_linear_url(raw: &str) -> Result<UrlScope> {
+pub fn parse_linear_url(raw: &str) -> Result<LinearUrlScope> {
     let with_scheme = if raw.contains("://") {
         raw.to_string()
     } else {
         format!("https://{raw}")
     };
     let parsed = url::Url::parse(&with_scheme)
-        .map_err(|_| anyhow::anyhow!("'{raw}' is not a Linear URL — expected https://linear.app/<workspace>/team/<KEY>/… or …/project/<slug>-<id>/…"))?;
+        .map_err(|_| anyhow::anyhow!("'{raw}' is not a Linear URL — expected https://linear.app/<workspace>/team/<KEY>/… or …/project/<slug>-<slug-id>/…"))?;
     if parsed.host_str() != Some("linear.app") {
         anyhow::bail!("'{raw}' is not a Linear URL — expected a linear.app link");
     }
@@ -61,82 +65,63 @@ pub fn parse_linear_url(raw: &str) -> Result<UrlScope> {
     let pos = |name: &str| {
         segs.iter().position(|s| s.eq_ignore_ascii_case(name)).and_then(|i| segs.get(i + 1).copied())
     };
+    let mut scope = LinearUrlScope::default();
     if let Some(team) = pos("team") {
         let team = team.trim();
         if team.is_empty() {
             anyhow::bail!("'{raw}' has no team key after /team/");
         }
-        return Ok(UrlScope::Team(team.to_string()));
+        scope.team = Some(team.to_string());
     }
-    if let Some(issue) = pos("issue") {
-        let team = issue.split('-').next().map(str::trim).unwrap_or("");
-        if team.is_empty() {
-            anyhow::bail!("'{raw}' has no team prefix in the issue key");
+    if scope.team.is_none() {
+        if let Some(issue) = pos("issue") {
+            let team = issue.split('-').next().map(str::trim).unwrap_or("");
+            if team.is_empty() {
+                anyhow::bail!("'{raw}' has no team prefix in the issue key");
+            }
+            scope.team = Some(team.to_string());
         }
-        return Ok(UrlScope::Team(team.to_string()));
     }
     if let Some(slug) = pos("project") {
-        let id = slug.rsplit('-').next().map(str::trim).unwrap_or("");
-        if id.is_empty() || !id.chars().all(|c| c.is_ascii_hexdigit()) {
-            anyhow::bail!("'{raw}' has no project id after /project/<slug>-<id>/");
+        let slug = slug.trim();
+        let (slug_name, slug_id) = slug.rsplit_once('-').unwrap_or(("", slug));
+        let slug_name = slug_name.trim();
+        let slug_id = slug_id.trim();
+        if slug_name.is_empty()
+            || slug_id.is_empty()
+            || !slug_id.chars().all(|c| c.is_ascii_alphanumeric())
+        {
+            anyhow::bail!("'{raw}' has no project slug id after /project/<slug>-<slug-id>/");
         }
-        return Ok(UrlScope::Project(id.to_string()));
+        scope.project_slug = Some(slug_name.to_string());
+        scope.project_slug_id = Some(slug_id.to_string());
     }
-    anyhow::bail!("'{raw}' is not a team, project, or issue URL — open the team or project in Linear and copy that link");
-}
-
-#[derive(Debug, Deserialize)]
-struct ProjectData {
-    project: ProjectNode,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct ProjectNode {
-    #[serde(default)]
-    name: String,
-    #[serde(default)]
-    teams: TeamConnection,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct TeamConnection {
-    #[serde(default)]
-    nodes: Vec<TeamNode>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct TeamNode {
-    #[serde(default)]
-    key: String,
-}
-
-pub async fn resolve_project(uuid: &str) -> Result<(String, Vec<String>)> {
-    let key = api_key().map_err(|e| {
-        anyhow::anyhow!("{e} — a key is needed to resolve the project in the link; otherwise use -s team=<KEY>")
-    })?;
-    let http = client().map_err(|e| anyhow::anyhow!("{e}"))?;
-    let data: ProjectData = graphql(
-        &http,
-        &key,
-        "query($id: String!) { project(id: $id) { name teams(first: 10) { nodes { key } } } }",
-        serde_json::json!({ "id": uuid }),
-        "project lookup",
-    )
-    .await
-    .map_err(|e| anyhow::anyhow!("{e}"))?;
-    let teams: Vec<String> = data
-        .project
-        .teams
-        .nodes
-        .into_iter()
-        .map(|t| t.key)
-        .filter(|k| !k.trim().is_empty())
-        .collect();
-    if data.project.name.trim().is_empty() || teams.is_empty() {
-        anyhow::bail!("Linear returned no project for id '{uuid}' — check the link");
+    if let Some(label) = pos("label") {
+        let label = label.trim();
+        if !label.is_empty() {
+            scope.label = Some(label.to_string());
+        }
     }
-    Ok((data.project.name, teams))
+    if scope.team.is_none() && scope.project_slug_id.is_none() {
+        anyhow::bail!("'{raw}' has no team, project, or issue scope — open the team or project in Linear and copy that link");
+    }
+    Ok(scope)
 }
+
+const PROJECT_ISSUES_QUERY: &str = r#"query($projectSlugId: String!, $after: String) {
+  issues(filter: { project: { slugId: { eq: $projectSlugId } } }, first: 50, after: $after, orderBy: updatedAt) {
+    nodes {
+      identifier title description url priority
+      state { type }
+      project { name }
+      team { key }
+      labels(first: 10) { nodes { name } }
+      relations(first: 10) { nodes { type relatedIssue { identifier } } }
+      inverseRelations(first: 10) { nodes { type issue { identifier } } }
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+}"#;
 
 pub struct PollStats {
     pub upserted: usize,
@@ -249,7 +234,7 @@ struct LabelNode {
     name: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PageInfo {
     #[serde(default)]
@@ -301,18 +286,6 @@ fn scope_of(source: &crate::models::TaskSource) -> Result<Scope, PollError> {
             source.id
         ))
     })?;
-    let team = v
-        .get("team")
-        .and_then(|t| t.as_str())
-        .map(str::trim)
-        .filter(|t| !t.is_empty())
-        .ok_or_else(|| {
-            PollError::Fatal(format!(
-                "source #{}: missing team scope — recreate it with -s team=ENG",
-                source.id
-            ))
-        })?
-        .to_string();
     let opt = |k: &str| {
         v.get(k)
             .and_then(|t| t.as_str())
@@ -320,9 +293,18 @@ fn scope_of(source: &crate::models::TaskSource) -> Result<Scope, PollError> {
             .filter(|t| !t.is_empty())
             .map(str::to_string)
     };
+    let team = opt("team");
+    let project_slug_id = opt("projectSlugId");
+    if team.is_none() && project_slug_id.is_none() {
+        return Err(PollError::Fatal(format!(
+            "source #{}: missing team or project scope — recreate it with -s team=ENG or --url <linear-link>",
+            source.id
+        )));
+    }
     Ok(Scope {
         team,
         project: opt("project"),
+        project_slug_id,
         label: opt("label"),
     })
 }
@@ -517,19 +499,35 @@ pub async fn poll_source(source: &crate::models::TaskSource) -> Result<PollStats
     let scope = scope_of(source)?;
     let key = api_key().map_err(|e| PollError::Fatal(e.to_string()))?;
     let http = client()?;
-    let what = format!("source #{} (team {})", source.id, scope.team);
+    let what = match (&scope.team, &scope.project_slug_id) {
+        (Some(team), Some(slug_id)) => format!("source #{} (team {team}, project {slug_id})", source.id),
+        (Some(team), None) => format!("source #{} (team {team})", source.id),
+        (None, Some(slug_id)) => format!("source #{} (project {slug_id})", source.id),
+        (None, None) => format!("source #{}", source.id),
+    };
     let mut after: Option<String> = None;
     let mut collected: Vec<IssueNode> = Vec::new();
     let mut cursor = source.cursor.clone();
     for _ in 0..MAX_PAGES {
-        let data: IssuesData = graphql(
-            &http,
-            &key,
-            ISSUES_QUERY,
-            serde_json::json!({ "teamKey": scope.team, "after": after }),
-            &what,
-        )
-        .await?;
+        let data: IssuesData = if let Some(slug_id) = &scope.project_slug_id {
+            graphql(
+                &http,
+                &key,
+                PROJECT_ISSUES_QUERY,
+                serde_json::json!({ "projectSlugId": slug_id, "after": after }),
+                &what,
+            )
+            .await?
+        } else {
+            graphql(
+                &http,
+                &key,
+                ISSUES_QUERY,
+                serde_json::json!({ "teamKey": scope.team, "after": after }),
+                &what,
+            )
+            .await?
+        };
         for node in data.issues.nodes {
             if node.identifier.trim().is_empty() || !is_open(&node) || !in_scope(&node, &scope) {
                 continue;
