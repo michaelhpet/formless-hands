@@ -22,8 +22,10 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { toast } from "@/components/ui/toast";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useDebounce } from "@/hooks/use-debounce";
+import { errorMessage, useErrorToast } from "@/hooks/use-error-toast";
 import { usePollProject } from "@/lib/api/projects";
 import { useCreateTask, useTasks } from "@/lib/api/tasks";
 import type { TasksSearch } from "@/router";
@@ -138,14 +140,17 @@ export function TasksPage() {
 				);
 			},
 			onError: (error) => {
-				setPollText(
-					error instanceof Error
-						? `poll failed: ${error.message}`
-						: "poll failed",
-				);
+				setPollText(null);
+				toast.add({
+					type: "error",
+					title: "Poll failed",
+					description: errorMessage(error),
+				});
 			},
 		});
 	};
+	useErrorToast(tasksQuery.error, "Couldn't load tasks");
+	useErrorToast(createMutation.error, "Couldn't create task");
 
 	const filtering = query.trim() !== "" || status !== "all" || source !== "all";
 
@@ -201,15 +206,6 @@ export function TasksPage() {
 					<NewTaskDialog onCreate={createTask} />
 				</div>
 			</div>
-
-			{createMutation.isError ? (
-				<p className="text-destructive">
-					Couldn't create task:{" "}
-					{createMutation.error instanceof Error
-						? createMutation.error.message
-						: "unknown error"}
-				</p>
-			) : null}
 
 			<div className="flex gap-2">
 				<InputGroup className="max-w-sm flex-1">
@@ -268,14 +264,6 @@ export function TasksPage() {
 
 			{tasksQuery.isLoading ? (
 				<p className="text-muted-foreground">Loading tasks…</p>
-			) : null}
-			{tasksQuery.isError ? (
-				<p className="text-destructive">
-					Couldn't load tasks:{" "}
-					{tasksQuery.error instanceof Error
-						? tasksQuery.error.message
-						: "unknown error"}
-				</p>
 			) : null}
 			{visible.length === 0 && !tasksQuery.isLoading ? (
 				<Empty>

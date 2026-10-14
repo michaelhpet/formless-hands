@@ -47,11 +47,11 @@ pub enum RepoRef {
 }
 
 pub fn classify_repo_arg(arg: &str) -> Result<RepoRef> {
-    let path = Path::new(arg);
-    if path.is_dir() {
-        let abs = path
+    let expanded = crate::config::expand_home(arg);
+    if expanded.is_dir() {
+        let abs = expanded
             .canonicalize()
-            .with_context(|| format!("resolve local directory '{arg}'"))?;
+            .with_context(|| format!("resolve local directory '{}'", expanded.display()))?;
         return Ok(RepoRef::Local(abs));
     }
     Ok(RepoRef::Remote(arg.to_string()))

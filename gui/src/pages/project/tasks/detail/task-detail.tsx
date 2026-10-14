@@ -14,6 +14,7 @@ import {
 	EmptyTitle,
 } from "@/components/ui/empty";
 import { Textarea } from "@/components/ui/textarea";
+import { useErrorToast } from "@/hooks/use-error-toast";
 import { type Task, useReviews, useTask, useUpdateTask } from "@/lib/api/tasks";
 import { useWorks, type Work } from "@/lib/api/works";
 import { formatStamp } from "@/lib/datetime";
@@ -328,6 +329,7 @@ function TaskDetailView({
 	const reviewsQuery = useReviews(task.id);
 	const worksQuery = useWorks({ project: projectId, limit: 500 });
 	const updateMutation = useUpdateTask();
+	useErrorToast(updateMutation.error, "Couldn't save");
 	const [noteBody, setNoteBody] = useState("");
 	const [sessionNotes, setSessionNotes] = useState<string[]>([]);
 	const [replyingTo, setReplyingTo] = useState<number | null>(null);
@@ -551,14 +553,6 @@ function TaskDetailView({
 						onNoteBody={setNoteBody}
 						onAddNote={addNote}
 					/>
-					{updateMutation.isError ? (
-						<p className="text-destructive">
-							Couldn't save:{" "}
-							{updateMutation.error instanceof Error
-								? updateMutation.error.message
-								: "unknown error"}
-						</p>
-					) : null}
 				</div>
 				<TaskDetailSidebar
 					projectId={projectId ?? ""}

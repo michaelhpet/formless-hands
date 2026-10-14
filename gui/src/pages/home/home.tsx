@@ -1,4 +1,5 @@
 import { AppLayout } from "@/components/app-layout";
+import { useErrorToast } from "@/hooks/use-error-toast";
 import { useCreateProject, useProjects } from "@/lib/api/projects";
 import { useSources } from "@/lib/api/sources";
 import { useTasks } from "@/lib/api/tasks";
@@ -61,6 +62,8 @@ export function HomePage() {
 					worksQuery.error,
 				].find((error) => error instanceof Error)
 			: undefined;
+	useErrorToast(loadError, "Couldn't load projects");
+	useErrorToast(createMutation.error, "Couldn't create project");
 
 	return (
 		<AppLayout>
@@ -81,21 +84,8 @@ export function HomePage() {
 					projectCount={projects.length}
 					connectedCount={connected}
 				/>
-				{createMutation.isError ? (
-					<p className="text-destructive">
-						Couldn't create project:{" "}
-						{createMutation.error instanceof Error
-							? createMutation.error.message
-							: "unknown error"}
-					</p>
-				) : null}
 				{loading ? (
 					<p className="text-muted-foreground">Loading projects…</p>
-				) : null}
-				{loadError instanceof Error ? (
-					<p className="text-destructive">
-						Couldn't load projects: {loadError.message}
-					</p>
 				) : null}
 				{!loading ? (
 					<ProjectTable

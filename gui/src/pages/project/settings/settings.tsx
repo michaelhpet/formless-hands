@@ -18,6 +18,8 @@ import {
 } from "@/components/ui/empty";
 import { Field, FieldError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { toast } from "@/components/ui/toast";
+import { errorMessage, useErrorToast } from "@/hooks/use-error-toast";
 import { usePollProject, useProjects } from "@/lib/api/projects";
 import {
 	useCreateSource,
@@ -169,14 +171,18 @@ function ProjectSettingsForm({
 				);
 			},
 			onError: (error) => {
-				setPollText(
-					error instanceof Error
-						? `poll failed: ${error.message}`
-						: "poll failed",
-				);
+				setPollText(null);
+				toast.add({
+					type: "error",
+					title: "Poll failed",
+					description: errorMessage(error),
+				});
 			},
 		});
 	};
+	useErrorToast(setEnabledMutation.error, "Couldn't update source");
+	useErrorToast(deleteSourceMutation.error, "Couldn't remove source");
+	useErrorToast(createSourceMutation.error, "Couldn't add source");
 
 	const toggleSource = (sourceId: number) => {
 		const current = sources.find((source) => source.id === sourceId);
@@ -408,14 +414,6 @@ function ProjectSettingsForm({
 								existing={sources.map((source) => source.name)}
 								onCreate={({ kind, config }) => createSource(kind, config)}
 							/>
-							{createSourceMutation.isError ? (
-								<p className="px-3.5 py-2 text-destructive">
-									Couldn't add source:{" "}
-									{createSourceMutation.error instanceof Error
-										? createSourceMutation.error.message
-										: "unknown error"}
-								</p>
-							) : null}
 						</div>
 					</div>
 				</Card>

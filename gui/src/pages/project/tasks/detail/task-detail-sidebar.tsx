@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { toast } from "@/components/ui/toast";
+import { errorMessage, useErrorToast } from "@/hooks/use-error-toast";
 import {
 	type Task,
 	useCreateDependency,
@@ -80,9 +82,19 @@ function DependenciesSection({
 		}
 		createMutation.mutate(
 			{ taskId, dependsOn, project: projectName },
-			{ onSuccess: () => setInput("") },
+			{
+				onSuccess: () => setInput(""),
+				onError: (error) => {
+					toast.add({
+						type: "error",
+						title: "Couldn't add dependency",
+						description: errorMessage(error),
+					});
+				},
+			},
 		);
 	};
+	useErrorToast(deleteMutation.error, "Couldn't remove dependency");
 
 	const deps = depsQuery.data ?? [];
 

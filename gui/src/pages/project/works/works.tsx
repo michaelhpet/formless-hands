@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/input-group";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useDebounce } from "@/hooks/use-debounce";
+import { useErrorToast } from "@/hooks/use-error-toast";
 import { useWorks } from "@/lib/api/works";
 import type { WorksSearch } from "@/router";
 import {
@@ -83,6 +84,7 @@ export function WorksPage() {
 	const task = search.task ?? "all";
 	const worksQuery = useWorks({ project: projectId, limit: 200 });
 	const works = worksQuery.data ?? [];
+	useErrorToast(worksQuery.error, "Couldn't load works");
 
 	const updateSearch = (patch: Partial<WorksSearch>) => {
 		navigate({
@@ -201,14 +203,6 @@ export function WorksPage() {
 			</div>
 			{worksQuery.isLoading ? (
 				<p className="text-muted-foreground">Loading works…</p>
-			) : null}
-			{worksQuery.isError ? (
-				<p className="text-destructive">
-					Couldn't load works:{" "}
-					{worksQuery.error instanceof Error
-						? worksQuery.error.message
-						: "unknown error"}
-				</p>
 			) : null}
 
 			<div className="grid w-full grid-cols-2 gap-2.5 xl:grid-cols-5">

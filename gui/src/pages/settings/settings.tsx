@@ -13,6 +13,8 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { toast } from "@/components/ui/toast";
+import { errorMessage, useErrorToast } from "@/hooks/use-error-toast";
 import type { AppConfig } from "@/lib/api/settings";
 import { useConfig, useSaveConfig } from "@/lib/api/settings";
 import { fieldErrors } from "@/lib/form";
@@ -67,6 +69,7 @@ const portSchema = z
 export function SettingsPage() {
 	const configQuery = useConfig();
 	const [reloadKey, setReloadKey] = useState(0);
+	useErrorToast(configQuery.error, "Couldn't load config");
 
 	const reload = () => {
 		void configQuery.refetch().then(() => {
@@ -92,14 +95,6 @@ export function SettingsPage() {
 				</div>
 				{configQuery.isLoading ? (
 					<p className="text-muted-foreground">Loading config…</p>
-				) : null}
-				{configQuery.isError ? (
-					<p className="text-destructive">
-						Couldn't load config:{" "}
-						{configQuery.error instanceof Error
-							? configQuery.error.message
-							: "unknown error"}
-					</p>
 				) : null}
 				{configQuery.data ? (
 					<SettingsForm
@@ -165,7 +160,12 @@ function SettingsForm({ initial }: { initial: SettingsFields }) {
 						setNotice("saved · takes effect after daemon restart");
 					},
 					onError: (error) => {
-						setNotice(error instanceof Error ? error.message : "save failed");
+						setNotice(null);
+						toast.add({
+							type: "error",
+							title: "Couldn't save config",
+							description: errorMessage(error),
+						});
 					},
 				},
 			);

@@ -13,6 +13,8 @@ import {
 	EmptyMedia,
 	EmptyTitle,
 } from "@/components/ui/empty";
+import { toast } from "@/components/ui/toast";
+import { errorMessage } from "@/hooks/use-error-toast";
 import {
 	type Task,
 	useCreateReview,
@@ -192,17 +194,30 @@ function TaskReviewView({
 								setApproved(decision === "approved");
 								const trimmed = message.trim();
 								setSummary(trimmed ? { decision, message: trimmed } : null);
-								createReview.mutate({
-									taskId: task.id,
-									body:
-										trimmed === ""
-											? decision === "approved"
-												? "Approved"
-												: "Changes requested"
-											: trimmed,
-									kind:
-										decision === "approved" ? "approved" : "changes-requested",
-								});
+								createReview.mutate(
+									{
+										taskId: task.id,
+										body:
+											trimmed === ""
+												? decision === "approved"
+													? "Approved"
+													: "Changes requested"
+												: trimmed,
+										kind:
+											decision === "approved"
+												? "approved"
+												: "changes-requested",
+									},
+									{
+										onError: (error) => {
+											toast.add({
+												type: "error",
+												title: "Couldn't submit review",
+												description: errorMessage(error),
+											});
+										},
+									},
+								);
 							}}
 						/>
 					</div>
