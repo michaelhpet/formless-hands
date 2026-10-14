@@ -1,13 +1,7 @@
-import { IconSearch } from "@tabler/icons-react";
+import { IconRefresh, IconSearch } from "@tabler/icons-react";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { cn } from "cn";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-} from "@/components/ui/card";
 import {
 	Empty,
 	EmptyContent,
@@ -30,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useDebounce } from "@/hooks/use-debounce";
+import { usePollProject } from "@/lib/api/projects";
 import { useCreateTask, useTasks } from "@/lib/api/tasks";
 import type { TasksSearch } from "@/router";
 import { AttentionView } from "./attention-view";
@@ -57,35 +52,11 @@ type View = TaskView;
 type SourceFilter = "all" | TaskSourceKind;
 type StatusFilter = "all" | TaskStatus;
 
-function StatCard({
-	label,
-	value,
-	sub,
-	valueClassName,
-}: {
-	label: string;
-	value: number;
-	sub: string;
-	valueClassName?: string;
-}) {
-	return (
-		<Card size="sm">
-			<CardHeader>
-				<CardDescription>{label}</CardDescription>
-			</CardHeader>
-			<CardContent className="flex flex-col gap-1">
-				<div className={cn("text-[26px] leading-8 font-bold", valueClassName)}>
-					{value}
-				</div>
-				<p className="text-muted-foreground">{sub}</p>
-			</CardContent>
-		</Card>
-	);
-}
-
 export function TasksPage() {
 	const { projectId } = useParams({ strict: false });
 	const createMutation = useCreateTask();
+	const pollMutation = usePollProject();
+	const [pollText, setPollText] = useState<string | null>(null);
 	const navigate = useNavigate();
 	const search = useSearch({ from: "/$projectId/tasks" });
 	const query = search.q ?? "";
@@ -156,6 +127,26 @@ export function TasksPage() {
 		});
 	};
 
+	const pollNow = () => {
+		if (projectId === undefined || pollMutation.isPending) {
+			return;
+		}
+		pollMutation.mutate(projectId, {
+			onSuccess: (result) => {
+				setPollText(
+					`polled just now · ${result.sources} sources · ${result.upserted} issues`,
+				);
+			},
+			onError: (error) => {
+				setPollText(
+					error instanceof Error
+						? `poll failed: ${error.message}`
+						: "poll failed",
+				);
+			},
+		});
+	};
+
 	const clearFilters = () => {
 		updateSearch({
 			q: undefined,
@@ -166,12 +157,19 @@ export function TasksPage() {
 	};
 
 	return (
-		<div className="flex w-full flex-1 flex-col gap-3 px-5 py-4">
+		<div
+			className={
+				view === "kanban"
+					? "flex h-full w-full flex-col gap-3 overflow-hidden px-5 py-4"
+					: "flex w-full flex-col gap-3 px-5 py-4"
+			}
+		>
 			<div className="flex items-start justify-between gap-3">
 				<div className="flex flex-col gap-1">
 					<h1 className="text-lg leading-5.5 font-bold">Tasks</h1>
 					<p className="text-muted-foreground">
 						{stats.open} open · {stats.blocked} blocked
+						{pollText ? ` · ${pollText}` : null}
 					</p>
 				</div>
 				<div className="flex items-center gap-2">
@@ -190,6 +188,14 @@ export function TasksPage() {
 							<SelectItem value="fh">{SOURCE_LABELS.fh}</SelectItem>
 						</SelectContent>
 					</Select>
+					<Button
+						variant="outline"
+						onClick={pollNow}
+						disabled={pollMutation.isPending}
+					>
+						<IconRefresh data-icon="inline-start" />
+						{pollMutation.isPending ? "Polling…" : "Poll now"}
+					</Button>
 					<NewTaskDialog onCreate={createTask} />
 				</div>
 			</div>
@@ -202,36 +208,6 @@ export function TasksPage() {
 						: "unknown error"}
 				</p>
 			) : null}
-
-			<div className="grid w-full grid-cols-2 gap-2.5 xl:grid-cols-5">
-				<StatCard
-					label="NEEDS TRIAGE"
-					value={stats.needsTriage}
-					sub="Awaiting triage"
-				/>
-				<StatCard
-					label="READY"
-					value={stats.ready}
-					sub={`${stats.ready} Ready to start`}
-				/>
-				<StatCard
-					label="IN PROGRESS"
-					value={stats.inProgress}
-					sub="Active works"
-					valueClassName="text-warning"
-				/>
-				<StatCard
-					label="COMPLETED"
-					value={stats.completed}
-					sub={`${stats.completed} Awaiting review`}
-				/>
-				<StatCard
-					label="DONE"
-					value={stats.done}
-					sub={`${stats.done} Approved`}
-					valueClassName="text-success"
-				/>
-			</div>
 
 			<div className="flex gap-2">
 				<InputGroup className="max-w-sm flex-1">
@@ -320,7 +296,9 @@ export function TasksPage() {
 					</EmptyContent>
 				</Empty>
 			) : view === "kanban" ? (
-				<TaskKanban tasks={visible} />
+				<div className="min-h-0 flex-1 overflow-hidden">
+					<TaskKanban tasks={visible} />
+				</div>
 			) : view === "table" ? (
 				<TasksTableView key={`${query}-${status}-${source}`} tasks={visible} />
 			) : view === "attention" ? (

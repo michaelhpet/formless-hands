@@ -57,7 +57,7 @@ export function ProjectLayout() {
 	};
 
 	return (
-		<div className="flex min-h-screen flex-col bg-background font-mono text-xs antialiased">
+		<div className="flex h-screen flex-col overflow-hidden bg-background font-mono text-xs antialiased">
 			<header className="sticky top-0 z-40 flex items-center justify-between gap-4 border-b bg-background px-4 py-2.5">
 				<div className="flex min-w-0 items-center gap-5">
 					<Link to="/" aria-label="Formless Hands home">
@@ -126,7 +126,7 @@ export function ProjectLayout() {
 					<DaemonStatus />
 				</div>
 			</header>
-			<main className="flex w-full flex-1 flex-col">
+			<main className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto">
 				{project || projectsQuery.isLoading ? (
 					<Outlet />
 				) : (

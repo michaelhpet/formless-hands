@@ -47,7 +47,7 @@ function TaskCard({ task }: { task: Task }) {
 			className={cn(
 				accentBorderClass(task.status),
 				done && "opacity-70",
-				"cursor-pointer hover:border-ring",
+				"min-h-max shrink-0 cursor-pointer hover:border-ring",
 			)}
 		>
 			<CardContent className="flex flex-col gap-1.5">
@@ -83,22 +83,29 @@ function TaskCard({ task }: { task: Task }) {
 
 export function TaskKanban({ tasks }: { tasks: Task[] }) {
 	return (
-		<div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+		<div className="grid h-full w-full grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
 			{KANBAN_COLUMNS.map((column) => {
 				const items = tasks.filter(
 					(task) => columnForStatus(task.status) === column.key,
 				);
 				return (
-					<section key={column.key} aria-label={column.title}>
-						<div className="flex flex-col gap-2">
-							<div className="flex items-center justify-between">
-								<h3 className="tracking-wide text-muted-foreground">
-									{column.title}
-								</h3>
-								<Badge variant="outline" className={COUNT_STYLES[column.key]}>
-									{items.length}
-								</Badge>
-							</div>
+					<section
+						key={column.key}
+						aria-label={column.title}
+						className="flex min-h-0 flex-col gap-2"
+					>
+						<div className="flex shrink-0 items-center justify-between">
+							<h3 className="tracking-wide text-muted-foreground">
+								{column.title}
+							</h3>
+							<Badge variant="outline" className={COUNT_STYLES[column.key]}>
+								{items.length}
+							</Badge>
+						</div>
+						<div className="no-scrollbar flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-0.5">
+							{items.length === 0 ? (
+								<p className="text-muted-foreground">No tasks</p>
+							) : null}
 							{items.map((task) => (
 								<TaskCard key={task.id} task={task} />
 							))}
