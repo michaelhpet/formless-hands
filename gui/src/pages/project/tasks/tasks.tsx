@@ -1,6 +1,5 @@
 import { IconRefresh, IconSearch } from "@tabler/icons-react";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
 	Empty,
@@ -58,7 +57,6 @@ export function TasksPage() {
 	const { projectId } = useParams({ strict: false });
 	const createMutation = useCreateTask();
 	const pollMutation = usePollProject();
-	const [pollText, setPollText] = useState<string | null>(null);
 	const navigate = useNavigate();
 	const search = useSearch({ from: "/$projectId/tasks" });
 	const query = search.q ?? "";
@@ -134,13 +132,7 @@ export function TasksPage() {
 			return;
 		}
 		pollMutation.mutate(projectId, {
-			onSuccess: (result) => {
-				setPollText(
-					`polled just now · ${result.sources} sources · ${result.upserted} issues`,
-				);
-			},
 			onError: (error) => {
-				setPollText(null);
 				toast.add({
 					type: "error",
 					title: "Poll failed",
@@ -176,7 +168,6 @@ export function TasksPage() {
 					<h1 className="text-lg leading-5.5 font-bold">Tasks</h1>
 					<p className="text-muted-foreground">
 						{stats.open} open · {stats.blocked} blocked
-						{pollText ? ` · ${pollText}` : null}
 					</p>
 				</div>
 				<div className="flex items-center gap-2">

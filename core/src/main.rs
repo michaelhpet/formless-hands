@@ -439,6 +439,45 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+static PIPELINE_RUNNING: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+static WATCH_RUNNING: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+fn try_claim(running: &std::sync::atomic::AtomicBool) -> bool {
+    running
+        .compare_exchange(
+            false,
+            true,
+            std::sync::atomic::Ordering::SeqCst,
+            std::sync::atomic::Ordering::SeqCst,
+        )
+        .is_ok()
+}
+
+fn release(running: &std::sync::atomic::AtomicBool) {
+    running.store(false, std::sync::atomic::Ordering::SeqCst);
+}
+
+pub(crate) fn kick_pipeline() {
+    if !try_claim(&PIPELINE_RUNNING) {
+        tracing::info!("kick: pipeline already running, skipping");
+        return;
+    }
+    let cfg = match config::load() {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            release(&PIPELINE_RUNNING);
+            tracing::error!(error = %e, "kick: cannot load config");
+            return;
+        }
+    };
+    tokio::spawn(async move {
+        pipeline_drain(&cfg).await;
+        release(&PIPELINE_RUNNING);
+    });
+}
+
 async fn pipeline_tick(cfg: &config::Config) {
     let start = std::time::Instant::now();
     tracing::info!("tick=pipeline start");
@@ -457,6 +496,13 @@ async fn pipeline_tick(cfg: &config::Config) {
             return;
         }
     }
+    pipeline_drain(cfg).await;
+    tracing::info!(elapsed_ms = start.elapsed().as_millis(), "tick=pipeline done");
+}
+
+async fn pipeline_drain(cfg: &config::Config) {
+    let start = std::time::Instant::now();
+    tracing::info!("drain start");
     match triage::triage_once(cfg).await {
         Ok(stats) => {
             crate::events::publish(
@@ -523,8 +569,8 @@ async fn pipeline_tick(cfg: &config::Config) {
         }
         Err(e) => tracing::error!(error = %e, "tick=pipeline watch failed"),
     }
-    crate::events::publish("tick.done", None, None, None, "pipeline tick done".to_string());
-    tracing::info!(elapsed_ms = start.elapsed().as_millis(), "tick=pipeline done");
+    crate::events::publish("tick.done", None, None, None, "pipeline drain done".to_string());
+    tracing::info!(elapsed_ms = start.elapsed().as_millis(), "drain done");
 }
 
 async fn watch_tick(cfg: &config::Config) {
@@ -555,10 +601,6 @@ async fn watch_tick(cfg: &config::Config) {
 }
 
 async fn run_loops(cfg: config::Config) -> Result<()> {
-    use std::sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    };
     use tokio_cron_scheduler::{Job, JobScheduler};
 
     let poll_schedule = config::normalize_cron("poll_cron", &cfg.service.poll_cron)?;
@@ -566,23 +608,18 @@ async fn run_loops(cfg: config::Config) -> Result<()> {
 
     let mut sched = JobScheduler::new().await.context("start cron scheduler")?;
 
-    let pipeline_guard: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
-    let watch_guard: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
-
     {
         let cfg = cfg.clone();
         let poll_cron = cfg.service.poll_cron.clone();
-        let guard = Arc::clone(&pipeline_guard);
         let job = Job::new_async(poll_schedule.as_str(), move |_uuid, _lock| {
             let cfg = cfg.clone();
-            let guard = Arc::clone(&guard);
             Box::pin(async move {
-                if guard.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+                if !try_claim(&PIPELINE_RUNNING) {
                     tracing::info!("tick=pipeline skipped (previous run still active)");
                     return;
                 }
                 pipeline_tick(&cfg).await;
-                guard.store(false, Ordering::SeqCst);
+                release(&PIPELINE_RUNNING);
             })
         })
         .with_context(|| {
@@ -597,17 +634,15 @@ async fn run_loops(cfg: config::Config) -> Result<()> {
     {
         let cfg = cfg.clone();
         let watch_cron = cfg.service.watch_cron.clone();
-        let guard = Arc::clone(&watch_guard);
         let job = Job::new_async(watch_schedule.as_str(), move |_uuid, _lock| {
             let cfg = cfg.clone();
-            let guard = Arc::clone(&guard);
             Box::pin(async move {
-                if guard.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+                if !try_claim(&WATCH_RUNNING) {
                     tracing::info!("tick=watch skipped (previous run still active)");
                     return;
                 }
                 watch_tick(&cfg).await;
-                guard.store(false, Ordering::SeqCst);
+                release(&WATCH_RUNNING);
             })
         })
         .with_context(|| {

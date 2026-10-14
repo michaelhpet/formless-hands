@@ -151,17 +151,7 @@ async fn api_project_poll(
         None,
         format!("polled {} source(s), {} open issue(s)", totals.sources, totals.upserted),
     );
-    if let Ok(cfg) = config::load() {
-        if let Ok(stats) = crate::triage::triage_once(&cfg).await {
-            events::publish(
-                "triage.finished",
-                Some(project_id),
-                None,
-                None,
-                format!("triage: {} promoted, {} unblocked", stats.promoted, stats.unblocked),
-            );
-        }
-    }
+    crate::kick_pipeline();
     Ok(Json(serde_json::json!({ "sources": totals.sources, "upserted": totals.upserted })))
 }
 
@@ -338,6 +328,7 @@ async fn api_task_create(
         .ok_or((StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
     drop(conn);
     let _ = crate::triage::retriage_task(id);
+    crate::kick_pipeline();
     Ok((StatusCode::CREATED, Json(task)))
 }
 
@@ -382,6 +373,7 @@ async fn api_task_update(
     }
     drop(conn);
     let _ = crate::triage::retriage_task(id);
+    crate::kick_pipeline();
     let conn = db::connect().map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
     let task = db::get_task(&conn, id)
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, String::new()))?
@@ -612,6 +604,7 @@ async fn api_review_create(
         format!("task #{id} review {kind} by {}", review.author),
     );
     let _ = crate::triage::retriage_task(id);
+    crate::kick_pipeline();
     Ok((StatusCode::CREATED, Json(review)))
 }
 
@@ -895,6 +888,7 @@ async fn api_dependency_create(
         .ok_or((StatusCode::INTERNAL_SERVER_ERROR, String::new()))?;
     drop(conn);
     let _ = crate::triage::retriage_task(id);
+    crate::kick_pipeline();
     Ok((StatusCode::CREATED, Json(dep)))
 }
 
@@ -908,6 +902,7 @@ async fn api_dependency_delete(
     if db::remove_dependency(&conn, id, dep).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? {
         drop(conn);
         let _ = crate::triage::retriage_task(id);
+    crate::kick_pipeline();
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(StatusCode::NOT_FOUND)

@@ -145,7 +145,6 @@ function ProjectSettingsForm({
 	const createSourceMutation = useCreateSource();
 	const setEnabledMutation = useSetSourceEnabled();
 	const deleteSourceMutation = useDeleteSource();
-	const [pollText, setPollText] = useState<string | null>(null);
 	const [savedAt, setSavedAt] = useState<string | null>(null);
 	const form = useForm({
 		defaultValues: {
@@ -165,13 +164,7 @@ function ProjectSettingsForm({
 			return;
 		}
 		pollMutation.mutate(projectId, {
-			onSuccess: (result) => {
-				setPollText(
-					`polled just now · ${result.sources} sources · ${result.upserted} issues`,
-				);
-			},
 			onError: (error) => {
-				setPollText(null);
 				toast.add({
 					type: "error",
 					title: "Poll failed",
@@ -239,10 +232,9 @@ function ProjectSettingsForm({
 		.filter((stamp): stamp is string => stamp !== null)
 		.sort();
 	const lastPolled =
-		pollText ??
-		(stamps.length > 0
+		stamps.length > 0
 			? `Last polled ${formatStamp(stamps[stamps.length - 1])}`
-			: "Never polled");
+			: "Never polled";
 
 	return (
 		<div className="flex w-full flex-1 flex-col gap-3 px-5 py-4">
